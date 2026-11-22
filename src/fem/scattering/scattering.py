@@ -196,7 +196,7 @@ class ScatteringSolver2D(ScatteringSceneMixin, ElectromagneticSolverMixin):
         self.modes: PortModeSet | None = None
         self.incident: IncidentMode | None = None
         self._incident_mode_index: int | None = None
-        self._angle_mode_request: tuple[int, int, int, float, str] | None = None
+        self._angle_mode_request: tuple[int | None, int, int, float, str] | None = None
         self._angle_modes_resolved = self.angle is None or self.angle == 0.0
         self.left_monitor: float | None = None
         self.right_monitor: float | None = None
@@ -1041,6 +1041,7 @@ class ScatteringSolver2D(ScatteringSceneMixin, ElectromagneticSolverMixin):
             backend=backend,
             num_modes=num_modes,
             neff_guess=expected_z_neff,
+            mode_filter=self._is_bound_guided_mode if num_modes is None else None,
             direction="forward",
             max_refinements=max_refinements,
             adaptive_tolerance=adaptive_tolerance,
@@ -1087,12 +1088,13 @@ class ScatteringSolver2D(ScatteringSceneMixin, ElectromagneticSolverMixin):
         *,
         backend: str = "auto",
         side: Literal["left", "right"] = "left",
-        num_modes: int = 4,
+        num_modes: int | None = 4,
         neff_guess: complex | None = None,
         num_elements: int | None = None,
         max_refinements: int = 2,
         adaptive_tolerance: float = 0.05,
     ) -> PortModeSet:
+        """Solve for a mode count, or discover propagating port modes with num_modes=None."""
         from fem.common.linalg import resolve_eigen_backend
         backend = resolve_eigen_backend(backend)
         if side not in ("left", "right"):
@@ -1112,6 +1114,7 @@ class ScatteringSolver2D(ScatteringSceneMixin, ElectromagneticSolverMixin):
             backend=backend,
             num_modes=num_modes,
             neff_guess=neff_guess,
+            mode_filter=self._is_bound_guided_mode if num_modes is None else None,
             direction="forward",
             max_refinements=max_refinements,
             adaptive_tolerance=adaptive_tolerance,
@@ -1119,7 +1122,7 @@ class ScatteringSolver2D(ScatteringSceneMixin, ElectromagneticSolverMixin):
         selected = self.set_modes(candidates)
         if self.angle is not None and self.angle != 0.0:
             self._angle_mode_request = (
-                int(num_modes), int(num_elements),
+                num_modes, int(num_elements),
                 max_refinements,
                 adaptive_tolerance, backend,
             )
@@ -1272,14 +1275,10 @@ class ScatteringSolver2D(ScatteringSceneMixin, ElectromagneticSolverMixin):
             raise ConfigurationError(
                 "mesh_options and mode_options must be mappings."
             ) from exc
-        if mode_factory is None:
-            if mode_kwargs.get("side", "left") != "left":
-                raise ConfigurationError(
-                    "The integrated frequency sweep currently supports left incidence."
-                )
-            requested_modes = mode_kwargs.setdefault(
-                "num_modes", max(1, incident_mode + 1)
-            )
+        if mode_factory is None and mode_kwargs.get("side", "left") != "left":
+            raise ConfigurationError("The integrated frequency sweep currently supports left incidence.")
+        requested_modes = mode_kwargs.setdefault("num_modes", None)
+        if mode_factory is None and requested_modes is not None:
             try:
                 normalized_modes = (
                     None

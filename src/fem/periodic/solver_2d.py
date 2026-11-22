@@ -354,7 +354,7 @@ class PeriodicModeSolver2D(PeriodicScene2D, ElectromagneticSolverMixin):
         weights = np.asarray(system.basis.dx / self.k0**2, dtype=float)
         pml_mask = self.geometry.pml_mask(coordinates[0])
         physical_weights = weights * ~pml_mask
-        poynting = 0.5 * np.sum(physical_weights * (ex * np.conj(hy) - ey * np.conj(hx)))
+        poynting = 0.5 * np.sum(physical_weights * (ex * np.conj(hy) - ey * np.conj(hx))) / self.period
         density = (
             np.abs(physical_epsilon[0]) * np.abs(ex) ** 2
             + np.abs(physical_epsilon[1]) * np.abs(ey) ** 2

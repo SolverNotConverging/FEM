@@ -188,22 +188,25 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
         self._clear_solution()
         return self.mesh_data
 
-    def _boundary_mask(self, nodes: NDArray[np.float64], selector: str) -> NDArray[np.bool_]:
-        x0, x1 = self.geometry.x_span
-        scale = x1 - x0
-        if self.dim == 2:
-            assert self.geometry.y_span is not None
-            scale = max(scale, self.geometry.y_span[1] - self.geometry.y_span[0])
-        tolerance = 1e-9 * max(1.0, scale)
-        left = np.abs(nodes[:, 0] - x0) <= tolerance
-        right = np.abs(nodes[:, 0] - x1) <= tolerance
-        if self.dim == 1:
-            return left if selector == "left" else right
-        assert self.geometry.y_span is not None
-        y0, y1 = self.geometry.y_span
-        bottom = np.abs(nodes[:, 1] - y0) <= tolerance
-        top = np.abs(nodes[:, 1] - y1) <= tolerance
-        return {"left": left, "right": right, "bottom": bottom, "top": top, "outer": left | right | bottom | top}[selector]
+    def _boundary_mask(self, selector: str) -> NDArray[np.bool_]:
+        assert self.mesh_data is not None
+        mesh = self.mesh_data.mesh
+        facets = mesh.facets[:, mesh.boundary_facets()]
+        if selector != "outer":
+            # Each exterior facet of the interval or rectangle belongs to one
+            # side. Its midpoint distinguishes sides even at shared corners.
+            centers = mesh.p[:, facets].mean(axis=1)
+            x0, x1 = self.x_range
+            sides = ["left", "right"]
+            distances = [abs(centers[0] - x0), abs(centers[0] - x1)]
+            if self.dim == 2:
+                y0, y1 = self.y_range
+                sides.extend(("bottom", "top"))
+                distances.extend((abs(centers[1] - y0), abs(centers[1] - y1)))
+            facets = facets[:, np.argmin(distances, axis=0) == sides.index(selector)]
+        mask = np.zeros(mesh.nvertices, dtype=bool)
+        mask[facets] = True
+        return mask
 
     def _dirichlet_data(self) -> tuple[NDArray[np.bool_], NDArray[np.float64], dict[str, NDArray[np.bool_]]]:
         assert self.mesh_data is not None
@@ -212,15 +215,13 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
         values = np.zeros(len(nodes), dtype=float)
         named_masks: dict[str, NDArray[np.bool_]] = {}
         if self.outer_potential is not None:
-            mask = self._boundary_mask(nodes, "outer" if self.dim == 2 else "left")
-            if self.dim == 1:
-                mask |= self._boundary_mask(nodes, "right")
+            mask = self._boundary_mask("outer")
             fixed[mask] = True
             values[mask] = self.outer_potential
             named_masks["outer"] = mask.copy()
         for region in self.geometry.potentials:
             if isinstance(region.shape, str):
-                mask = self._boundary_mask(nodes, region.shape)
+                mask = self._boundary_mask(region.shape)
             elif self.dim == 1:
                 mask = np.asarray(region.shape.contains(nodes[:, 0]), dtype=bool)  # type: ignore[union-attr]
             else:

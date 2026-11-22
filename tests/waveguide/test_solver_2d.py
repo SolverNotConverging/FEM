@@ -16,6 +16,19 @@ from fem.waveguide.solver_2d import ModeSolver2D
 
 
 @pytest.mark.gmsh
+def test_default_te10_propagation_constant_near_cutoff():
+    width = 22.86e-3
+    cutoff = C_0 / (2 * width)
+    frequency = 1.001 * cutoff
+    solver = ModeSolver2D(frequency=frequency, x_range=width, y_range=10.16e-3,
+                          boundary=materials.PEC)
+    mode = solver.solve(num_modes=1)[0]
+
+    expected_beta = solver.k0 * np.sqrt(1 - (cutoff / frequency)**2)
+    assert mode.beta == pytest.approx(expected_beta, rel=5e-4)
+
+
+@pytest.mark.gmsh
 def test_second_order_pair_improves_cutoff_on_the_same_mesh():
     expected = np.sqrt(0.75)
     errors = []

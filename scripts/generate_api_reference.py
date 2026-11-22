@@ -175,6 +175,8 @@ def entry(name, obj, returned):
                 annotation = annotation[8:-2]
             default = "—" if p.default is inspect.Parameter.empty else repr(p.default)
             meaning = DESCRIPTIONS[p.name]
+            if name == "ScatteringSolver2D.solve_modes" and p.name == "num_modes":
+                meaning = "Requested count, or ``None`` to discover propagating port modes."
             result += f"   * - ``{p.name}``\n     - ``{annotation}``\n     - {'Required' if p.default is inspect.Parameter.empty else 'Optional'}\n     - ``{default}``\n     - {meaning}\n"
         result += "\n"
     return result + "Returns: " + returned + ".\n\n"
@@ -318,10 +320,10 @@ limits and the meaning of unresolved or truncated multiplets.
 """
         if package in ('fem.waveguide', 'fem.periodic'):
             out += section("Transverse vector views")
-            out += """In the interactive viewer opened by ``show()``, select ``Et`` for (Ex, Ey)
-or ``Ht`` for (Hx, Hy). Transverse means perpendicular to propagation along z;
-the longitudinal Ez/Hz components are excluded from arrow directions and colours.
-These are viewer selections; Cartesian components remain available as scalar plots.
+            out += """In the interactive viewer opened by ``show()``, select ``Et`` or ``Ht``
+for electric or magnetic vector arrows. Waveguides display x/y components.
+Two-dimensional periodic results display x/z components in the mesh plane,
+including in ``plot()``. Three-dimensional periodic results display x/y components.
 
 ``real`` and ``imag`` draw the selected phasor part. ``magnitude`` applies one
 global phase rotation to make the largest transverse component real, then draws
@@ -329,9 +331,8 @@ that real vector field. All arrows are coloured by the complex transverse norm;
 their lengths are scaled together within each view. Phase is not offered as a
 vector quantity. Mesh and material overlays leave the transverse arrows visible.
 
-Waveguide views show x/y arrows (1D samples lie on y=0). A 2D periodic cell is
-displayed in xyz so its transverse y arrows are visible outside the xz sample
-plane. Three-dimensional periodic modes use PyVista arrows with zero z component.
+One-dimensional waveguide samples lie on y=0. Three-dimensional periodic modes
+use PyVista arrows with zero z component.
 The same selections work for loaded archives and individual sweep cases.
 
 """

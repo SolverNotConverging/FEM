@@ -16,6 +16,16 @@ def _uniform_simulation(frequency: float) -> wf.ScatteringSolver2D:
 
 
 @pytest.mark.gmsh
+def test_default_sweep_discovers_propagating_modes_on_each_side_of_cutoff():
+    solver = wf.ScatteringSolver2D(frequency=5e9, x_range=(0., .024), z_range=(-.04, .04),
+                                   boundary=materials.PEC)
+    solver.set_matched_ports()
+    sweep = solver.sweep([5e9, 10e9])
+    assert [len(case.modes) for case in sweep.results] == [1, 3]
+    np.testing.assert_allclose(sweep.S21, 1.0, atol=1e-10)
+
+
+@pytest.mark.gmsh
 def test_run_persists_complete_result_and_records_absolute_path(tmp_path) -> None:
     frequency = _internal_C0 / 1.55e-6
     simulation = _uniform_simulation(frequency)

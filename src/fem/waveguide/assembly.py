@@ -545,7 +545,7 @@ def solve_qep_candidates(
     if backend in ("gpu", "hybrid"):
         from fem.common.linalg import quadratic_eigenpairs
         return quadratic_eigenpairs(system.A0, system.A1, system.A2, target=target,
-            count=max(2*candidate_count, 8), tolerance=tolerance, backend=backend)
+            count=max(2*candidate_count, 8), tolerance=tolerance, backend=backend, normwise=True)
     if size <= dense_linearization_limit or size <= 3:
         left, right = linearized_pencil(system)
         try:

@@ -14,6 +14,8 @@ from typing import Any
 
 import numpy as np
 
+from ._vector_plot import aligned_components, draw_mode_vectors
+
 _WAVE_COMPONENTS = ("Ex", "Ey", "Ez", "Hx", "Hy", "Hz", "E", "H")
 _QUANTITIES = ("real", "imag", "magnitude", "phase")
 _STATIC_QUANTITIES = ("real", "magnitude")
@@ -108,13 +110,13 @@ class _Source:
         if self.static:
             two_d = case.coordinates.shape[1] == 2
             return ["potential", "Ex", *(["Ey"] if two_d else []), "E",
-                    "Dx", *(["Dy"] if two_d else []), "D"]
+                    "Et", "Dx", *(["Dy"] if two_d else []), "D", "Dt"]
         fields = case.mode(0).fields if self.has_modes else getattr(case, "fields", None)
         if fields is not None and hasattr(fields, "components"):
             names = list(fields.components)
             vectors = ('E', 'H', *_TRANSVERSE_COMPONENTS)
             return names + [n for n in vectors if n not in names]
-        names = list(_WAVE_COMPONENTS)
+        names = [*_WAVE_COMPONENTS, *_TRANSVERSE_COMPONENTS]
         if getattr(case, "nf2ff", None) is not None:
             names += list(_FARFIELD)
         return names
@@ -280,7 +282,7 @@ class ResultViewer:
             return list(_SPECTRUM_QUANTITIES)
         if self._component.currentText() in _FARFIELD:
             return list(_FARFIELD_QUANTITIES)
-        if self._component.currentText() in _TRANSVERSE_COMPONENTS:
+        if not self._source.static and self._component.currentText() in _TRANSVERSE_COMPONENTS:
             return ['real', 'imag', 'magnitude']
         return list(_STATIC_QUANTITIES if self._source.static else _QUANTITIES)
 
@@ -384,9 +386,15 @@ class ResultViewer:
 
     def _field_2d(self, case: Any, mode: int, component: str, quantity: str):
         mesh = self._source.mesh_data(case)
-        if component in _TRANSVERSE_COMPONENTS:
-            figure = _transverse_figure(self._source, case.mode(mode) if self._source.has_modes else case,
-                                        component, quantity)
+        if component in (*_TRANSVERSE_COMPONENTS, "Dt"):
+            if self._source.static or self._source.family == "fem.scattering":
+                figure = case.plot(component=component, quantity=quantity)
+            else:
+                from matplotlib.figure import Figure
+                figure = Figure()
+                selected = case.mode(mode) if self._source.has_modes else case
+                axes = "xz" if self._source.family == "fem.periodic" else "xy"
+                draw_mode_vectors(figure.subplots(), selected, component, quantity, axes=axes)
             message = _transverse_overlays(figure.axes[0], self._source, mesh,
                                           self._mesh.isChecked(), self._material.isChecked())
             return self._matplotlib(figure), message
@@ -460,99 +468,13 @@ class ResultViewer:
         return self
 
 
-def _aligned_components(components):
-    """Use one global phasor phase, preserving relative component phases."""
-    values = np.asarray(components, dtype=complex)
-    pivot = values.ravel()[np.argmax(abs(values))]
-    return values*np.exp(-1j*np.angle(pivot))
-
-
-def _physical_mode_points(source, coordinates):
-    """Embed waveguide x/xy or periodic xz samples in physical xyz space."""
-    points = np.asarray(coordinates, dtype=float)
-    if points.ndim == 1:
-        points = points[:, None]
-    physical = np.zeros((len(points), 3))
-    axes = (0, 2) if source.family == 'fem.periodic' and points.shape[1] == 2 else tuple(range(points.shape[1]))
-    physical[:, axes] = points
-    return physical
-
-
-def _transverse_figure(source, mode, component, quantity):
-    from matplotlib.figure import Figure
-    from matplotlib.cm import ScalarMappable
-    from matplotlib.colors import Normalize
-
-    fields = mode.fields
-    coordinates = fields.coordinates
-    if isinstance(coordinates, tuple):
-        coordinates = np.column_stack([np.asarray(axis).ravel() for axis in coordinates])
-    points = _physical_mode_points(source, coordinates)
-    values = np.zeros((3, len(points)), complex)
-    for axis, name in enumerate('xy'):
-        if f'{component[0]}{name}' in fields.components:
-            values[axis] = np.asarray(fields.component(f'{component[0]}{name}')).ravel()
-    # Average element-owned quadrature samples before decimation. No global
-    # interpolation is used, so arrows cannot bridge conductor holes.
-    owners = getattr(fields, 'sample_element_indices', None)
-    if owners is None:
-        owners = fields.metadata.get('sample_element_indices')
-    if owners is not None:
-        _, owners = np.unique(np.asarray(owners).ravel(), return_inverse=True)
-        counts = np.bincount(owners)
-        points = np.column_stack([np.bincount(owners, weights=column)/counts for column in points.T])
-        values = np.array([(np.bincount(owners, weights=column.real)
-                            + 1j*np.bincount(owners, weights=column.imag))/counts for column in values])
-    step = max(1, int(np.ceil(len(points)/600)))
-    points, values = points[::step], values[:, ::step]
-    magnitude = np.linalg.norm(abs(values), axis=0)
-    if quantity == 'magnitude':
-        values = _aligned_components(values)
-    vectors = (values.imag if quantity == 'imag' else values.real).T
-    native_points = getattr(fields, 'mesh_points', None)
-    domain = points if native_points is None else _physical_mode_points(source, native_points)
-    span = float(np.max(np.ptp(domain, axis=0))) or 1.
-    largest = float(np.max(np.linalg.norm(vectors, axis=1))) or 1.
-    figure = Figure()
-    three_d = source.family == 'fem.periodic'
-    ax = figure.add_subplot(projection='3d' if three_d else None)
-    if three_d:
-        normal = Normalize(vmin=0, vmax=float(magnitude.max()) or 1.)
-        colours = ScalarMappable(norm=normal, cmap='viridis')
-        ax.quiver(*points.T, *(vectors*.06*span/largest).T,
-                  colors=colours.to_rgba(magnitude), pivot='middle')
-        ax.set_ylabel('y (m)')
-        ax.set_zlabel('z (m)')
-        # A 2D periodic cell lies in xz, but transverse arrows also need y.
-        extent = np.maximum(np.ptp(domain, axis=0), .15*span)
-        center = (domain.max(axis=0)+domain.min(axis=0))/2
-        for index, setter in enumerate((ax.set_xlim, ax.set_ylim, ax.set_zlim)):
-            setter(center[index]-.6*extent[index], center[index]+.6*extent[index])
-        ax.set_box_aspect(extent)
-    else:
-        colours = ax.quiver(points[:, 0], points[:, 1], vectors[:, 0], vectors[:, 1], magnitude,
-                            angles='xy', scale_units='xy', scale=largest/(.06*span),
-                            pivot='mid', cmap='viridis')
-        ax.set_aspect('equal', adjustable='box')
-        ax.set_ylabel('y (m)')
-        ax.set_xlim(domain[:, 0].min()-.08*span, domain[:, 0].max()+.08*span)
-        if fields.dimension == 1:
-            ax.set_ylim(-.15*span, .15*span)
-        else:
-            ax.set_ylim(domain[:, 1].min()-.08*span, domain[:, 1].max()+.08*span)
-    ax.set_xlabel('x (m)')
-    ax.set_title(f'Mode {mode.index}: {quantity}({component}), neff={mode.neff:.6g}')
-    figure.colorbar(colours, ax=ax, label=f'|{component}| ({"V/m" if component == "Et" else "A/m"})')
-    return figure
-
-
 def _transverse_overlays(ax, source, mesh, mesh_overlay, material):
     """Keep transverse arrows visible when mesh or material is enabled."""
     if not (mesh_overlay or material):
         return ''
     if mesh is None:
         return 'This result records no mesh.'
-    points = _physical_mode_points(source, mesh.coordinates)
+    points = _display_points(source, mesh.coordinates)
     cells = np.asarray(mesh.elements)
     regions = cell_materials(mesh) if material else None
     message = 'This result records no material regions.' if material and regions is None else ''
@@ -564,15 +486,6 @@ def _transverse_overlays(ax, source, mesh, mesh_overlay, material):
                            color=colours[regions[0][i]], alpha=.25, zorder=0)
         if mesh_overlay:
             ax.vlines(points[:, 0], *ax.get_ylim(), color='black', linewidth=.3, alpha=.3)
-    elif hasattr(ax, 'get_zlim'):
-        from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
-        triangles = points[cells[:, :3]]
-        if regions is not None:
-            ax.add_collection3d(Poly3DCollection(triangles, alpha=.2,
-                facecolors=[colours[index] for index in regions[0]]))
-        if mesh_overlay:
-            ax.add_collection3d(Line3DCollection(triangles[:, [0, 1, 2, 0]], colors='black',
-                                                linewidths=.3, alpha=.4))
     else:
         if regions is not None:
             from matplotlib.colors import ListedColormap
@@ -609,7 +522,7 @@ def populate_3d(plotter: Any, mode: Any, mesh: Any, component: str, quantity: st
         if component in _TRANSVERSE_COMPONENTS:
             components.append(np.zeros_like(components[0]))
             if quantity == 'magnitude':
-                components = _aligned_components(components)
+                components = aligned_components(components)
         add_arrows(plotter, points, components,
                    quantity, label=f"|{component}|")
     else:

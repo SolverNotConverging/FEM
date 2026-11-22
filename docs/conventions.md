@@ -31,7 +31,9 @@ Lengths are in metres, frequencies in hertz and constitutive values are relative
 Fields use `exp(+i*omega*t)` and guided propagation `exp(-i*beta*z)`. Passive
 materials have non-positive imaginary parts and forward attenuation is
 `alpha = -Im(beta)`. Periodic results store field envelopes with the Bloch phase
-recorded separately.
+recorded separately. Propagating periodic modes have unit longitudinal power,
+averaged over one period of the envelope and integrated over the physical
+cross-section. The units are W/m of invariant width in 2D and W in 3D.
 
 ## Vocabulary
 

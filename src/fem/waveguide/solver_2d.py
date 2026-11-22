@@ -425,7 +425,7 @@ class ModeSolver2D(WaveguideScene2D, ElectromagneticSolverMixin):
         interface_refinement_width: float | None = None,
         boundary_refinement: float | None = 0.5,
         boundary_refinement_width: float | None = None,
-        element_order: int = 1,
+        element_order: int = 2,
         quadrature_order: int = 4,
     ) -> FEMMesh2D:
         """Mesh the scene and assemble its analytic quadratic pencil.
@@ -1111,7 +1111,7 @@ class ModeSolver2D(WaveguideScene2D, ElectromagneticSolverMixin):
             )
         return result
 
-    def mesh(self, *, max_element_size: float | None=None, resolution: tuple[int, int] | None=None, wavelength_elements: int=4, material_aware: bool=True, interface_refinement: float | None=0.7, interface_refinement_width: float | None=None, boundary_refinement: float | None=0.5, boundary_refinement_width: float | None=None, element_order: int=1, quadrature_order: int=4):
+    def mesh(self, *, max_element_size: float | None=None, resolution: tuple[int, int] | None=None, wavelength_elements: int=4, material_aware: bool=True, interface_refinement: float | None=0.7, interface_refinement_width: float | None=None, boundary_refinement: float | None=0.5, boundary_refinement_width: float | None=None, element_order: int=2, quadrature_order: int=4):
         """Build the initial mesh; solve() may subsequently refine it."""
         settings = {'max_element_size': max_element_size, 'resolution': resolution, 'wavelength_elements': wavelength_elements, 'material_aware': material_aware, 'interface_refinement': interface_refinement, 'interface_refinement_width': interface_refinement_width, 'boundary_refinement': boundary_refinement, 'boundary_refinement_width': boundary_refinement_width, 'element_order': element_order, 'quadrature_order': quadrature_order}
         mesh = self._mesh_impl(**settings)

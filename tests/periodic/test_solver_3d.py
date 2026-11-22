@@ -28,6 +28,24 @@ PERIOD = 5.0e-3
 EPSILON = 2.25
 
 
+def test_default_3d_te10_carries_one_watt_through_transverse_face():
+    from skfem import FacetBasis
+    from fem.common.constants import ETA_0
+
+    solver = PeriodicModeSolver3D(frequency=FREQUENCY, x_range=WIDTH, y_range=HEIGHT,
+                                  z_range=PERIOD, background_material=materials.Material(epsilon=EPSILON))
+    mode = solver.solve(num_modes=1)[0]
+    basis = solver.system.basis
+    inlet = basis.mesh.facets_satisfying(lambda x: np.isclose(x[2], 0), boundaries_only=True)
+    face = FacetBasis(basis.mesh, basis.elem, facets=inlet, dofs=basis.dofs, intorder=4)
+    electric = face.interpolate(mode.coefficients)
+    z_cross_e = np.stack((-electric[1], electric[0], np.zeros_like(electric[0])))
+    magnetic = 1j * (electric.curl - 1j * mode.neff * z_cross_e) / ETA_0
+    flux = 0.5 * np.real(electric[0] * magnetic[1].conj() - electric[1] * magnetic[0].conj())
+    # The basis coordinates are k0 * (x, y, z). Convert the inlet area to m².
+    assert np.sum(flux * face.dx) / solver.k0**2 == pytest.approx(1.0, abs=.02)
+
+
 def test_refinement_failure_rolls_back_density(monkeypatch):
     solver = PeriodicModeSolver3D(frequency=FREQUENCY, x_range=WIDTH, y_range=HEIGHT, z_range=PERIOD)
     solver._discretize_options = {"max_element_size": 0.006}

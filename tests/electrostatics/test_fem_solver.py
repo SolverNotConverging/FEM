@@ -11,6 +11,25 @@ from fem.common.shapes import Circle, Interval
 pytestmark = pytest.mark.gmsh
 
 
+@pytest.mark.parametrize("dim", [1, 2])
+def test_default_nanoscale_capacitor_has_correct_plate_charge(dim):
+    from scipy.constants import epsilon_0
+
+    gap = 10e-9
+    height = 5e-9
+    solver = ElectrostaticSolver(dim=dim, x_range=gap, outer_potential=None,
+                                 y_range=height if dim == 2 else None)
+    solver.set_potential(geometry="left", potential=0.0, name="ground")
+    solver.set_potential(geometry="right", potential=1.0, name="drive")
+    result = solver.solve()
+
+    x = result.coordinates[:, 0]
+    np.testing.assert_array_equal(solver.fixed_mask, (x == x.min()) | (x == x.max()))
+    np.testing.assert_allclose(result.potential, x / gap, atol=1e-11)
+    expected_charge = epsilon_0 * (height if dim == 2 else 1.0) / gap
+    assert result.conductor_charge("drive") == pytest.approx(expected_charge, rel=1e-8, abs=0)
+
+
 def test_1d_linear_dirichlet_solution_and_field() -> None:
     solver = ElectrostaticSolver(dim=1, outer_potential=None, x_range=(0.0, 1.0))
     solver.set_potential(potential=0.0, name='ground', geometry='left')

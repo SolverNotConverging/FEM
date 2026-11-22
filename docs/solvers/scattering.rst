@@ -62,11 +62,23 @@ Workflow
 
 ``solve()`` automatically meshes when needed and never saves or opens a window.
 The adaptive defaults are two refinements and a relative tolerance of 0.05.
+When ``solve()`` sets up the ports, it launches mode zero and retains the
+validated forward propagating lead modes for outgoing power and matched-port
+boundaries. Transverse-PML ports retain bound guided modes. Frequency sweeps
+discover these modes at each frequency. To choose the basis explicitly, call
+``solve_modes(num_modes=...)`` before ``solve()``.
 The example uses a fixed mesh for reproducibility. Geometry edits invalidate
 ``mesh_data`` and ``result``; an automatic rebuild reuses explicit mesh settings.
 
 ``show()`` opens the interactive PyVista/Qt viewer (``fem view result.h5`` opens saved
 archives). Saving and loading work without a display.
+
+Select ``Et`` or ``Ht`` in the viewer, or call ``result.plot(component="Et")``
+or ``result.plot(component="Ht")``, to draw the total electric or magnetic
+field in the x-z plane. The z component points horizontally and the x component
+vertically. Colour gives the in-plane phasor magnitude in V/m or A/m.
+Select ``real`` or ``imag`` for signed arrows, or ``magnitude`` for a
+globally phase-aligned view. In a sweep, select a frequency case to view its fields.
 
 ``slot = solver.add_slot(geometry=sheet, z_range=(z0, z1))`` cuts an opening
 in a background PEC sheet. Use ``solver.remove(geometry=slot)`` to close it.

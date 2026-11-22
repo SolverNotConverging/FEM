@@ -657,7 +657,9 @@ Returns: the initial mesh stored in ``mesh_data``.
 
 .. code-block:: python
 
-    ScatteringSolver2D.solve_modes(*, backend: 'str' = 'auto', side: "Literal['left', 'right']" = 'left', num_modes: 'int' = 4, neff_guess: 'complex | None' = None, num_elements: 'int | None' = None, max_refinements: 'int' = 2, adaptive_tolerance: 'float' = 0.05) -> 'PortModeSet'
+    ScatteringSolver2D.solve_modes(*, backend: 'str' = 'auto', side: "Literal['left', 'right']" = 'left', num_modes: 'int | None' = 4, neff_guess: 'complex | None' = None, num_elements: 'int | None' = None, max_refinements: 'int' = 2, adaptive_tolerance: 'float' = 0.05) -> 'PortModeSet'
+
+Solve for a mode count, or discover propagating port modes with num_modes=None.
 
 .. list-table:: Arguments
    :header-rows: 1
@@ -679,10 +681,10 @@ Returns: the initial mesh stored in ``mesh_data``.
      - ``'left'``
      - Port label, left or right.
    * - ``num_modes``
-     - ``int``
+     - ``int | None``
      - Optional
      - ``4``
-     - Number of modes requested; positive integer.
+     - Requested count, or ``None`` to discover propagating port modes.
    * - ``neff_guess``
      - ``complex | None``
      - Optional

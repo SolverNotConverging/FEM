@@ -46,6 +46,29 @@ def test_plot_is_headless(monkeypatch):
     assert figure.axes[0].get_xlabel() == "Frequency (Hz)"
 
 
+@pytest.mark.parametrize("component, unit", [("Et", "V/m"), ("Ht", "A/m")])
+@pytest.mark.parametrize("quantity", ["real", "imag", "magnitude"])
+def test_in_plane_arrows_use_total_fields_in_display_order(component, unit, quantity):
+    from matplotlib.quiver import Quiver
+
+    electric = np.array([[1+2j], [1000j], [-3+4j]]) * np.arange(1, 5)
+    magnetic = np.array([[2-6j], [-2000j], [3+1j]]) * np.arange(1, 5)
+    result = replace(_result(), E_incident=electric, H_incident=magnetic)
+    figure = result.plot(component=component, quantity=quantity)
+    axis = figure.axes[0]
+    assert (axis.name, axis.get_xlabel(), axis.get_ylabel()) == ("rectilinear", "z (m)", "x (m)")
+    arrows = next(item for item in axis.collections if isinstance(item, Quiver))
+    np.testing.assert_allclose(arrows.get_offsets(), result.coordinates[[1, 0]].T)
+    field = result.E_total if component == "Et" else result.H_total
+    phasors = field[[2, 0]]
+    np.testing.assert_allclose(arrows.get_array(), np.linalg.norm(phasors, axis=0))
+    assert figure.axes[1].get_ylabel() == f"|{component}| ({unit})"
+    if quantity == "magnitude":
+        pivot = phasors.ravel()[np.argmax(np.abs(phasors))]
+        phasors = phasors * np.exp(-1j * np.angle(pivot))
+    np.testing.assert_allclose([arrows.U, arrows.V], phasors.imag if quantity == "imag" else phasors.real)
+
+
 def test_viewer_renders_fields_and_s_parameters(monkeypatch):
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     from fem.common.viewer import ResultViewer
@@ -60,6 +83,18 @@ def test_viewer_renders_fields_and_s_parameters(monkeypatch):
     assert [viewer._component.itemText(i) for i in range(viewer._component.count())] == ["S11", "S21"]
     viewer._case.setCurrentIndex(2)
     assert viewer._status.currentMessage() == ""
+    from matplotlib.quiver import Quiver
+    for window in (single, viewer):
+        for component in ("Et", "Ht"):
+            window._component.setCurrentText(component)
+            assert window._component.currentText() == component
+            assert [window._quantity.itemText(i) for i in range(window._quantity.count())] == [
+                "real", "imag", "magnitude"]
+            window._quantity.setCurrentText("magnitude")
+            window._canvas.draw()
+            assert window._status.currentMessage() == ""
+            assert any(isinstance(item, Quiver) for item in window._canvas.figure.axes[0].collections)
+        window._window.close()
 
 
 def test_show_routes_to_the_shared_viewer(monkeypatch):

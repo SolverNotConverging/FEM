@@ -93,7 +93,18 @@ def plot_result(result, *, component=None, quantity="real"):
         ax.set_ylabel(quantity)
         ax.legend()
         return figure
-    result._plot_field(component or "Ey", quantity="abs" if quantity == "magnitude" else quantity, ax=axis)
+    if component in ("Et", "Ht"):
+        from fem.common._vector_plot import draw_vectors
+        # Stored samples are (x, z) and field rows are (x, y, z).
+        # Scattering plots place the propagation direction on the horizontal axis.
+        points = result.coordinates[[1, 0]].T
+        field = result.E_total if component == "Et" else result.H_total
+        unit = "V/m" if component == "Et" else "A/m"
+        draw_vectors(axis, points, field[[2, 0]], points, horizontal_axis="z", vertical_axis="x",
+                     quantity=quantity, label=f"|{component}| ({unit})")
+        axis.set_title(f"total {component}: {quantity}")
+    else:
+        result._plot_field(component or "Ey", quantity="abs" if quantity == "magnitude" else quantity, ax=axis)
     return figure
 
 

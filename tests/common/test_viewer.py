@@ -99,7 +99,11 @@ def test_mode_viewer_shows_e_and_h_with_mesh_and_material(slab_modes):
 def test_electrostatic_viewer_shows_potential_e_d_mesh_and_material(capacitor):
     viewer = ResultViewer(capacitor)
     components = [viewer._component.itemText(i) for i in range(viewer._component.count())]
-    assert components == ["potential", "Ex", "E", "Dx", "D"]
+    assert components == ["potential", "Ex", "E", "Et", "Dx", "D", "Dt"]
+    for component in ("Et", "Dt"):
+        viewer._component.setCurrentText(component)
+        assert viewer._status.currentMessage() == ""
+        assert [viewer._quantity.itemText(i) for i in range(viewer._quantity.count())] == ["real", "magnitude"]
     assert not any(_views(viewer))
     assert "no H" in viewer._info.text()
 
@@ -189,28 +193,31 @@ def test_transverse_magnitude_uses_one_global_phase_and_loaded_results(tmp_path)
     viewer._window.close()
 
 
-def test_periodic_2d_transverse_arrows_keep_y_direction_in_xyz_view():
+@pytest.mark.parametrize("component, expected", [("Et", (1., -2.)), ("Ht", (-3., 4.))])
+def test_periodic_2d_arrows_follow_xz_in_plot_and_viewer(component, expected):
+    from matplotlib.quiver import Quiver
     from fem.periodic import PeriodicMode, PeriodicModeSet, PeriodicSampledFields
     from fem.common import MeshSnapshot
 
     points = np.array([[0., 0.], [1., 0.], [0., 1.]])
-    fields = PeriodicSampledFields([[.25, .25]], {'Ey': [2j], 'Hx': [3.]}, dimension=2,
+    fields = PeriodicSampledFields([[.25, .35]], dict(Ex=[1j], Ey=[200j], Ez=[-2j],
+        Hx=[-3j], Hy=[400j], Hz=[4j]), dimension=2,
         mesh_points=points, mesh_cells=[[0, 1, 2]], sample_element_indices=[0])
     mode = PeriodicMode(neff=1., k0=2., period=1., fields=fields, coefficients=[1.])
     result = PeriodicModeSet([mode], frequency=1e9, period=1., dimension=2)
     object.__setattr__(result, '_mesh_snapshot', MeshSnapshot(points, [[0, 1, 2]], ('x', 'z'), {},
         {'element_tags': [1], 'physical_names': {1: 'background'}}))
     viewer = ResultViewer(result)
-    viewer._component.setCurrentText('Et')
+    viewer._component.setCurrentText(component)
     viewer._quantity.setCurrentText('imag')
     assert viewer._status.currentMessage() == ''
-    ax = viewer._canvas.figure.axes[0]
-    assert ax.get_ylabel() == 'y (m)' and ax.get_zlabel() == 'z (m)'
-    segments = np.asarray(ax.collections[0]._segments3d)
-    # The shaft is along y, at the physical x/z sample position.
-    np.testing.assert_allclose(segments[0, :, 0], .25)
-    np.testing.assert_allclose(segments[0, :, 2], .25)
-    assert np.ptp(segments[0, :, 1]) > 0
+    for figure in (viewer._canvas.figure, result.plot(component=component, quantity="imag")):
+        ax = figure.axes[0]
+        assert ax.name == "rectilinear" and ax.get_ylabel() == "z (m)"
+        arrows = next(item for item in ax.collections if isinstance(item, Quiver))
+        np.testing.assert_allclose(arrows.get_offsets(), [[.25, .35]])
+        np.testing.assert_allclose([arrows.U[0], arrows.V[0]], expected)
+        np.testing.assert_allclose(arrows.get_array(), np.linalg.norm(expected))
     viewer._mesh.setChecked(True)
     viewer._material.setChecked(True)
     viewer._canvas.draw()

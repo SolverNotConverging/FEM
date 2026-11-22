@@ -51,17 +51,29 @@ def _draw(ax, result, component, quantity, *, colorbar_axes=None):
             ax.triplot(points[:, 0], points[:, 1], cells, color="black", linewidth=.5)
         ax.set_title("FEM mesh")
         return
-    elif component in ("Ex", "Ey", "E", "Dx", "Dy", "D"):
+    elif component in ("Ex", "Ey", "E", "Et", "Dx", "Dy", "D", "Dt"):
         field = result.element_electric_field if component.startswith("E") else result.element_displacement_field
         if field is None:
             raise ConfigurationError("The result has no cell fields.")
         index = {"x": 0, "y": 1}.get(component[-1])
         if index is not None and index >= points.shape[1]:
             raise ConfigurationError(f"{component} is not defined in one dimension.")
-        value = np.linalg.norm(field, axis=1) if index is None else field[:, index]
         unit, location = ("V/m" if component.startswith("E") else "C/m²"), "cell"
+        if component in ("Et", "Dt"):
+            from fem.common._vector_plot import draw_vectors
+            if quantity not in ("real", "magnitude", "abs"):
+                raise ConfigurationError("Static vector fields support real or magnitude.")
+            vectors = field.T if field.shape[1] == 2 else np.vstack((field[:, 0], np.zeros(len(field))))
+            draw_vectors(ax, points[cells].mean(axis=1), vectors, points, vertical_axis="y",
+                         quantity=quantity, label=f"|{component}| ({unit})", colorbar_axes=colorbar_axes)
+            if points.shape[1] == 2:
+                ax.set_xlim(points[:, 0].min(), points[:, 0].max())
+                ax.set_ylim(points[:, 1].min(), points[:, 1].max())
+            ax.set_title(component)
+            return
+        value = np.linalg.norm(field, axis=1) if index is None else field[:, index]
     else:
-        raise ConfigurationError("component must be potential, mesh, E, Ex, Ey, D, Dx, or Dy.")
+        raise ConfigurationError("component must be potential, mesh, E, Ex, Ey, Et, D, Dx, Dy, or Dt.")
     if quantity in ("magnitude", "abs"): value = np.abs(value)
     elif quantity != "real": raise ConfigurationError("Static fields support quantity='real' or 'magnitude'.")
     if points.shape[1] == 1:
@@ -92,7 +104,8 @@ def show_result(result, *, block=True):
     from matplotlib.widgets import RadioButtons
     figure = plt.figure(figsize=(9, 6))
     selector_axes = figure.add_axes((.02, .25, .15, .5))
-    choices = ("potential", "Ex", "E", "D", "mesh") if result.coordinates.shape[1] == 1 else ("potential", "Ex", "Ey", "E", "D", "mesh")
+    choices = ("potential", "Ex", *(("Ey",) if result.coordinates.shape[1] == 2 else ()),
+               "E", "D", "mesh", "Et", "Dt")
     buttons = RadioButtons(selector_axes, choices)
     def redraw(component):
         for axis in list(figure.axes):

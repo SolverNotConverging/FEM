@@ -288,7 +288,7 @@ class PeriodicModeSolver3D(PeriodicScene3D, ElectromagneticSolverMixin):
         poynting = 0.5 * np.sum(
             physical_weights
             * (electric[0] * np.conj(magnetic[1]) - electric[1] * np.conj(magnetic[0]))
-        )
+        ) / self.period
         density = np.sum(np.abs(physical_epsilon) * np.abs(electric) ** 2, axis=0) + ETA_0**2 * np.sum(
             np.abs(physical_mu) * np.abs(magnetic) ** 2, axis=0
         )

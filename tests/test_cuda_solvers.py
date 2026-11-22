@@ -159,6 +159,10 @@ def test_periodic_cuda(dim, backend, cuda_ritz):
     np.testing.assert_allclose(gpu.neff, cpu.neff, rtol=1e-6, atol=1e-8)
     assert gpu.metadata["backend"] == ("gpu" if backend == "gpu" else "hybrid")
     assert gpu[0].residual < 1e-8
+    # neff is invariant under arbitrary field scaling. Check the independently
+    # implemented GPU power normalization using a phase-invariant field norm.
+    assert np.linalg.norm(gpu[0].component("Ey")) == pytest.approx(
+        np.linalg.norm(cpu[0].component("Ey")), rel=1e-5)
 
 
 def test_default_backend_uses_available_gpu(cuda_ritz):

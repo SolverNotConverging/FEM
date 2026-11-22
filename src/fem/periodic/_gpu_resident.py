@@ -108,7 +108,7 @@ class ResidentSystem3D:
         electric, scaled_h = self.volume.fields(full, neff)
         magnetic = scaled_h/ETA_0
         power = .5*cp.sum(self.physical_weights*(electric[0]*magnetic[1].conj()-
-                                                electric[1]*magnetic[0].conj()))
+                                                electric[1]*magnetic[0].conj())) / self.solver.period
         density = cp.sum(cp.abs(self.physical_epsilon)*cp.abs(electric)**2, axis=0)+cp.sum(
             cp.abs(self.physical_mu)*cp.abs(scaled_h)**2, axis=0)
         total = cp.sum(self.weights*density).real

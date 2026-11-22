@@ -918,7 +918,7 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
 
 .. code-block:: python
 
-    ModeSolver2D.mesh(*, max_element_size: 'float | None' = None, resolution: 'tuple[int, int] | None' = None, wavelength_elements: 'int' = 4, material_aware: 'bool' = True, interface_refinement: 'float | None' = 0.7, interface_refinement_width: 'float | None' = None, boundary_refinement: 'float | None' = 0.5, boundary_refinement_width: 'float | None' = None, element_order: 'int' = 1, quadrature_order: 'int' = 4)
+    ModeSolver2D.mesh(*, max_element_size: 'float | None' = None, resolution: 'tuple[int, int] | None' = None, wavelength_elements: 'int' = 4, material_aware: 'bool' = True, interface_refinement: 'float | None' = 0.7, interface_refinement_width: 'float | None' = None, boundary_refinement: 'float | None' = 0.5, boundary_refinement_width: 'float | None' = None, element_order: 'int' = 2, quadrature_order: 'int' = 4)
 
 Build the initial mesh; solve() may subsequently refine it.
 
@@ -974,7 +974,7 @@ Build the initial mesh; solve() may subsequently refine it.
    * - ``element_order``
      - ``int``
      - Optional
-     - ``1``
+     - ``2``
      - Finite-element polynomial order supported by this backend.
    * - ``quadrature_order``
      - ``int``
@@ -1298,10 +1298,10 @@ limits and the meaning of unresolved or truncated multiplets.
 Transverse vector views
 -----------------------
 
-In the interactive viewer opened by ``show()``, select ``Et`` for (Ex, Ey)
-or ``Ht`` for (Hx, Hy). Transverse means perpendicular to propagation along z;
-the longitudinal Ez/Hz components are excluded from arrow directions and colours.
-These are viewer selections; Cartesian components remain available as scalar plots.
+In the interactive viewer opened by ``show()``, select ``Et`` or ``Ht``
+for electric or magnetic vector arrows. Waveguides display x/y components.
+Two-dimensional periodic results display x/z components in the mesh plane,
+including in ``plot()``. Three-dimensional periodic results display x/y components.
 
 ``real`` and ``imag`` draw the selected phasor part. ``magnitude`` applies one
 global phase rotation to make the largest transverse component real, then draws
@@ -1309,9 +1309,8 @@ that real vector field. All arrows are coloured by the complex transverse norm;
 their lengths are scaled together within each view. Phase is not offered as a
 vector quantity. Mesh and material overlays leave the transverse arrows visible.
 
-Waveguide views show x/y arrows (1D samples lie on y=0). A 2D periodic cell is
-displayed in xyz so its transverse y arrows are visible outside the xz sample
-plane. Three-dimensional periodic modes use PyVista arrows with zero z component.
+One-dimensional waveguide samples lie on y=0. Three-dimensional periodic modes
+use PyVista arrows with zero z component.
 The same selections work for loaded archives and individual sweep cases.
 
 Result data and diagnostics

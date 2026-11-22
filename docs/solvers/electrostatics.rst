@@ -65,6 +65,9 @@ The example uses a fixed mesh for reproducibility. Geometry edits invalidate
 ``mesh_data`` and ``result``; an automatic rebuild reuses explicit mesh settings.
 
 ``show()`` opens a Matplotlib window that selects potential, cell fields and mesh.
+Select ``Et`` for electric-field arrows in V/m or ``Dt`` for displacement-field
+arrows in C/m². The arrows show signed cell values at element centres and use
+magnitude for colour. Both are also available through ``result.plot()``.
 Relative epsilon may be scalar, diagonal, or symmetric positive-definite.
 
 Persistence and API

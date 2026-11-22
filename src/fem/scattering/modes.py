@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from fem.common.validation import positive_integer as _positive_integer
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from math import ceil
 from typing import Literal, TypeAlias, overload
@@ -1277,7 +1277,8 @@ class ModeSolver:
         self,
         *,
         backend: str = "auto",
-        num_modes: int = 4,
+        num_modes: int | None = 4,
+        mode_filter: Callable[[PortMode], bool] | None = None,
         neff_guess: complex | None = None,
         direction: RequestedDirection = "forward",
         eigensolver_tolerance: float = 1e-10,
@@ -1287,7 +1288,7 @@ class ModeSolver:
     ) -> PortModeSet:
         """Solve for modes nearest ``neff_guess`` and reject invalid roots."""
 
-        requested = _positive_integer(num_modes, "num_modes")
+        requested = None if num_modes is None else _positive_integer(num_modes, "num_modes")
         if direction not in ("forward", "backward", "all"):
             raise ConfigurationError("direction must be 'forward', 'backward', or 'all'.")
         for value, name in (
@@ -1303,14 +1304,26 @@ class ModeSolver:
         if not np.isfinite((sigma.real, sigma.imag)).all():
             raise ConfigurationError("neff_guess must be finite.")
 
-        candidate_count = max(4 * requested, requested + 12)
-        values, vectors, method = self._linearized_candidates(
-            system,
-            sigma,
-            candidate_count,
-            eigensolver_tolerance,
-            backend,
-        )
+        candidate_count = 16 if requested is None else max(4 * requested, requested + 12)
+        search_target = sigma
+        if requested is None:
+            # Center the search between cutoff and the lead index, slightly
+            # off the propagation axis. Shifting on a mode (e.g. TEM) can
+            # hide other families in sparse shift-invert iteration.
+            search_target = (0.5 + 0.05j) * self._default_guess(system)
+            radius = max(abs(search_target), abs(sigma - search_target))
+        while True:
+            values, vectors, method = self._linearized_candidates(
+                system, search_target, candidate_count, eigensolver_tolerance, backend,
+            )
+            if requested is not None or candidate_count >= 2 * system.ndofs - 2:
+                break
+            if np.any(abs(values - search_target) > radius):
+                break
+            candidate_count = min(2 * candidate_count, 2 * system.ndofs - 2)
+        if requested is None:
+            order = np.argsort(abs(values - sigma), kind="stable")
+            values, vectors = values[order], vectors[:, order]
         accepted: list[PortMode] = []
         rejected_residual = 0
         rejected_divergence = 0
@@ -1343,6 +1356,10 @@ class ModeSolver:
             if not self._direction_matches(mode, direction):
                 rejected_direction += 1
                 continue
+            if requested is None and not mode.is_propagating:
+                continue
+            if mode_filter is not None and not mode_filter(mode):
+                continue
             duplicate = False
             for existing in accepted:
                 if abs(existing.neff - mode.neff) > 1e-8 * max(1.0, abs(mode.neff)):
@@ -1361,7 +1378,9 @@ class ModeSolver:
             if len(accepted) == requested:
                 break
 
-        if len(accepted) < requested:
+        if requested is None and not accepted:
+            raise ModeSolverError(f"No propagating {direction} lead modes passed validation near neff={sigma!r}.")
+        if requested is not None and len(accepted) < requested:
             raise ModeSolverError(
                 f"Requested {requested} {direction} mode(s) near neff={sigma!r}, "
                 f"but only {len(accepted)} passed validation. Rejected: "

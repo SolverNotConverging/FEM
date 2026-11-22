@@ -117,6 +117,18 @@ def test_uniform_pec_te_mode_matches_analytic_cutoff() -> None:
     assert solver.system.relative_hermiticity_errors() == pytest.approx((0.0, 0.0, 0.0), abs=1e-12)
 
 
+@pytest.mark.parametrize("period", [0.005, 0.010])
+def test_default_tem_fields_carry_unit_cross_sectional_power(period):
+    width = 0.004
+    solver = PeriodicModeSolver2D(frequency=10e9, x_range=width, z_range=period,
+                                  polarization="TM", boundary=materials.PEC)
+    mode = solver.solve(num_modes=1)[0]
+    # For a spatially constant TEM mode the transverse integral is width * Sz.
+    flux = 0.5 * width * np.real(mode.component("Ex") * mode.component("Hy").conj())
+    np.testing.assert_allclose(flux, 1.0, rtol=1e-8)
+    assert mode.neff == pytest.approx(1.0, abs=1e-9)
+
+
 def test_uniform_pec_tm_plane_wave_and_reconstructed_fields() -> None:
     solver = PeriodicModeSolver2D(frequency=10000000000.0, x_range=(0.0, 0.004), z_range=(0.0, 0.005), polarization='TM', boundary=materials.PEC, background_material=materials.Material(epsilon=2.25, mu=1.0))
     solver.mesh(max_element_size=0.001)

@@ -31,6 +31,22 @@ def test_matched_tem_ports_reproduce_dielectric_slab(element_order, family):
 
 
 @pytest.mark.gmsh
+def test_default_ports_capture_power_converted_by_asymmetric_insert():
+    solver = ScatteringSolver2D(frequency=10e9, x_range=(0., .024), z_range=(-.04, .04),
+                                boundary=materials.PEC)
+    solver.add_rectangle(x_range=(0., .010), z_range=(-.004, .004),
+                         material=materials.Material(epsilon=3.0))
+    solver.set_matched_ports()
+    result = solver.solve()
+
+    # TEM and the first TE/TM pair propagate at this frequency.
+    assert result.solve_info["matched_port_mode_count"] == 3
+    assert solver.incident.mode.neff == pytest.approx(1.0, abs=1e-8)
+    assert result.transmission - abs(result.S21)**2 > 0.1
+    assert result.reflection + result.transmission == pytest.approx(1.0, abs=.01)
+
+
+@pytest.mark.gmsh
 def test_uniform_matched_ports_have_zero_scattered_field():
     s=ScatteringSolver2D(frequency=10e9,x_range=(0.,.005),z_range=(-.02,.02),boundary=materials.PEC)
     s.set_matched_ports()

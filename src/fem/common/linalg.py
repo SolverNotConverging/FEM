@@ -74,10 +74,10 @@ def _generalized_operator(a, b, shift, backend):
 
 
 @contextmanager
-def _quadratic_operator(a0, a1, a2, shift, backend):
+def _quadratic_operator(a0, a1, a2, shift, backend, *, normwise=False):
     if backend in ("gpu", "hybrid"):
         from .gpu import quadratic_operator
-        with quadratic_operator(a0, a1, a2, shift) as operator:
+        with quadratic_operator(a0, a1, a2, shift, normwise=normwise) as operator:
             operator.backend = backend
             yield operator
     else:
@@ -146,11 +146,14 @@ def generalized_eigenpairs(a, b, *, target, count, tolerance=1e-10, backend="aut
 
 
 def quadratic_eigenpairs(a0, a1, a2, *, target, count, tolerance=1e-10, backend="auto",
-                        ncv=None, max_iterations=None, random_seed=0):
+                         ncv=None, max_iterations=None, random_seed=0, normwise=False):
     """Solve (A0 + lambda A1 + lambda² A2)x=0 by block elimination.
 
     Only the n-by-n polynomial is factorized, even when A2 is singular.
     Returned vectors are the physical first block of the companion vector.
+    With normwise=True CUDA Arnoldi tests polynomial backward error against
+    the coefficient matrix norms. The waveguide solver separately checks the
+    action-scaled residual and divergence of every returned candidate.
     """
     backend = resolve_eigen_backend(backend)
     target = finite_complex(target, "target")
@@ -158,7 +161,7 @@ def quadratic_eigenpairs(a0, a1, a2, *, target, count, tolerance=1e-10, backend=
     if a0.shape != a1.shape or a0.shape != a2.shape or a0.shape[0] != a0.shape[1]:
         raise ConfigurationError("Quadratic coefficient matrices must be square with matching shapes.")
     shift = target + 1e-6j * max(1.0, abs(target))
-    with _quadratic_operator(a0, a1, a2, shift, backend) as operator:
+    with _quadratic_operator(a0, a1, a2, shift, backend, normwise=normwise) as operator:
         values, vectors = _iterate(operator, target, shift, count, tolerance,
                                    ncv, max_iterations, random_seed, vector_rows=a0.shape[0])
     return values, vectors[:a0.shape[0]], "cudss-hybrid-shift-invert" if backend == "hybrid" else "cudss-shift-invert" if backend == "gpu" else "sparse-shift-invert"

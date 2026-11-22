@@ -83,11 +83,13 @@ def generalized_operator(a, b, shift):
 
 
 @contextmanager
-def quadratic_operator(a0, a1, a2, shift):
+def quadratic_operator(a0, a1, a2, shift, *, normwise=False):
     """Factor only Q(shift); eliminate the companion block on the GPU."""
     cp, csr_matrix, CudssFactor = _runtime()
     n = a0.shape[0]
     constant, linear, mass = (csr_matrix(a) for a in (a0, a1, a2))
+    if normwise:
+        matrix_norms = tuple(cp.linalg.norm(a.data) for a in (constant, linear, mass))
     coupling = linear + shift * mass
     with CudssFactor(constant + shift * linear + shift**2 * mass) as factor:
         def apply(vector):
@@ -98,7 +100,14 @@ def quadratic_operator(a0, a1, a2, shift):
             x = vectors[:n]
             terms = (constant @ x, (linear @ x) * values[None, :],
                      (mass @ x) * values[None, :]**2)
-            scale = sum(cp.linalg.norm(term, axis=0) for term in terms)
+            if normwise:
+                # Near cutoff, each QEP action can approach zero while its
+                # sparse matvec still incurs ordinary matrix-scale roundoff.
+                magnitude = cp.abs(values)
+                scale = cp.linalg.norm(x, axis=0) * (
+                    matrix_norms[0] + magnitude * matrix_norms[1] + magnitude**2 * matrix_norms[2])
+            else:
+                scale = sum(cp.linalg.norm(term, axis=0) for term in terms)
             return cp.linalg.norm(sum(terms), axis=0) / cp.where(scale == 0, 1, scale)
 
         yield _DeviceOperator((2*n, 2*n), apply, residual)

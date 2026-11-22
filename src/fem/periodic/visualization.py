@@ -31,6 +31,18 @@ def visualize(
         raise TypeError("show must be a boolean.")
     import matplotlib.pyplot as plt
 
+    if mode.fields.dimension == 2 and component in ("Et", "Ht"):
+        from fem.common._vector_plot import draw_mode_vectors
+        if ax is None:
+            _, ax = plt.subplots()
+        draw_mode_vectors(ax, mode, component, quantity, axes="xz", cmap=cmap, colorbar=colorbar)
+        if show_mesh:
+            ax.triplot(*mode.fields.mesh_points.T, mode.fields.mesh_cells,
+                       color="black", linewidth=.25, alpha=.45)
+        if show:
+            plt.show()
+        return ax.figure, ax
+
     values = mode.fields.quantity(component, quantity)
     if mode.fields.dimension == 3:
         if isinstance(max_points, bool) or int(max_points) < 1:

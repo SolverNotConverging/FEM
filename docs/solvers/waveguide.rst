@@ -28,6 +28,10 @@ Scripts that save results write to ``examples/waveguide/outputs/<example>/``.
 Working with the solver
 -----------------------
 
+``ModeSolver2D`` uses second-order transverse edge elements and a quadratic
+longitudinal field by default. This improves propagation-constant accuracy
+near cutoff. Pass ``element_order=1`` to ``mesh()`` for a first-order solve.
+
 For a quantitative comparison with theory, run::
 
     python benchmarks/analytical/rectangular_waveguide_modes.py --check
