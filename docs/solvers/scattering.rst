@@ -132,7 +132,11 @@ By default ``solve(max_refinements=2, adaptive_tolerance=0.05)`` checks
 volume equations, interface flux jumps and natural boundary conditions after
 each solve. It refines the cells with the largest contributions. A zero budget uses the current mesh. The final
 residual and stopping reason are available in ``result.solve_info``.
-Automatic meshing targets six elements per local wavelength at order two and
+After the physical residual meets tolerance, the solver compares RCS on the
+same physical mesh with successively doubled PML layers. Set ``pml_tolerance``
+to control the relative observable change or pass a custom ``pml_observable``.
+Both types of mesh update count toward ``max_refinements``.
+Automatic meshing targets four elements per local wavelength at order two and
 ten at order one. The dielectric sizing applies inside the target so that
 vacuum and its exterior PML can use the free-space wavelength.
 

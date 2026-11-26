@@ -20,7 +20,7 @@ def estimate_1d(solver, result):
     widths = solver.k0 * np.diff(nodes)
     centers = (nodes[:-1] + nodes[1:]) / 2
     quadratic = solver.mesh_data.info.element_order == 2
-    points, weights = np.polynomial.legendre.leggauss((solver._quadrature_order + 2) // 2 if quadratic else 1)
+    points, weights = np.polynomial.legendre.leggauss(max(2, (solver._quadrature_order + 2) // 2))
     weights = weights / 2
     dx = widths[:, None] * points / 2
     x = centers[:, None] + dx / solver.k0
@@ -138,12 +138,13 @@ def solve_2d(solver, args, options, max_refinements, adaptive_tolerance, max_ele
             material = material_from_volume(system.basis, lambda x, y: evaluate_material(
                 system.material_at, x / solver.k0, y / solver.k0))
 
+        cache = {} if len(result) > 1 else None
         for index, mode in enumerate(result):
             full = solver.coefficients[:, index]
             fields = lambda basis, coefficient: mixed_mode_fields(basis, full, mode.neff, coefficient)
             indicator, residual, components = maxwell_residual(
                 system.basis, fields, material, axes=(0, 1), neff=mode.neff,
-                natural=natural, quadrature_order=system.quadrature_order)
+                natural=natural, quadrature_order=system.quadrature_order, cache=cache)
             combined = np.maximum(combined, indicator / max(indicator.sum(), np.finfo(float).tiny) * residual**2)
             if residual >= maximum:
                 maximum, worst_components = residual, components

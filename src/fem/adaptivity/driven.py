@@ -1,14 +1,14 @@
-"""Physical-domain volume, interface and boundary residuals for driven fields."""
+"""Physical-domain and absorbing-shell residuals for driven fields."""
 
 import numpy as np
-from skfem import FacetBasis, InteriorFacetBasis
+from skfem import Basis, FacetBasis, InteriorFacetBasis
 from ._volume import derivative_operators, partial
 
-from .policy import cell_geometry
+from .policy import cached, cell_geometry
 
 
 def driven_residual(basis, coeff, primary_scale, derivative_scale, k, quadrature_order,
-                    incident=None, incident_derivative=None, *, walls=(), port_traces=(), gap_sources=()):
+                    incident=None, incident_derivative=None, *, walls=(), port_traces=(), gap_sources=(), absorber=None, cache=None):
     mesh = basis.mesh
     count = len(primary_scale)
     vector = mesh.dim() == 3
@@ -28,16 +28,17 @@ def driven_residual(basis, coeff, primary_scale, derivative_scale, k, quadrature
     if vector:
         density = density.sum(axis=0)
     energy = np.sum(basis.dx * (density + np.sum(abs(flux)**2, axis=0)))
-    h, _ = cell_geometry(mesh)
+    h, _ = cached(cache, "geometry", lambda: cell_geometry(mesh))
     indicators = np.zeros(count)
     left, right = mesh.f2t
-    facets = np.flatnonzero((left < count) & (right >= 0) & (right < count))
+    facets = cached(cache, "interior", lambda: np.flatnonzero((left < count) & (right >= 0) & (right < count)))
     for start in range(0, len(facets), 2048):
         selected = facets[start:start + 2048]
         traces = []
         for side in (0, 1):
-            face = InteriorFacetBasis(mesh, basis.elem, facets=selected, side=side,
-                                      dofs=basis.dofs, intorder=quadrature_order, disable_doflocs=True)
+            face = cached(cache if len(facets) <= 4096 else None, (start, side),
+                          lambda: InteriorFacetBasis(mesh, basis.elem, facets=selected, side=side,
+                              dofs=basis.dofs, intorder=quadrature_order, disable_doflocs=True))
             traces.append(fluxes(face, face.tind, include_incident=True))
         delta = traces[0][1] - traces[1][1]
         normal = face.normals
@@ -104,5 +105,123 @@ def driven_residual(basis, coeff, primary_scale, derivative_scale, k, quadrature
     scale = max(energy, np.finfo(float).tiny)
     # Some tetrahedral rules have negative weights. Clamp roundoff after integration.
     indicators = np.maximum(indicators, 0.) / scale
-    return indicators, float(np.sqrt(indicators.sum())), {
+    residual = float(np.sqrt(indicators.sum()))
+    components = {
         name: float(np.sqrt(max(value, 0.) / scale)) for name, value in sums.items()}
+
+    if absorber is None:
+        return indicators, residual, components
+    report = shell_residual(basis, coeff, count, k, absorber, h, scale, quadrature_order)
+    report["physical_residual"] = residual
+    return indicators, residual, components, report
+
+
+def shell_residual(basis, coeff, count, k, absorber, h, scale, quadrature_order):
+    """Strong equations in stretched vacuum and transmission at the shell entrance."""
+    from fem.common.radiation_pml import material_diagonal
+
+    mesh = basis.mesh
+    vector = mesh.dim() == 3
+    volume = interface = energy = 0.
+    dofs = basis.dofs.element_dofs
+    for start in range(count, mesh.nelements, 1024):
+        cells = np.arange(start, min(start + 1024, mesh.nelements))
+        if not np.any(coeff[dofs[:, cells]]):
+            continue
+        shell = Basis(mesh, basis.elem, elements=cells, dofs=basis.dofs, mapping=basis.mapping,
+                      quadrature=basis.quadrature, disable_doflocs=True)
+        tensor = material_diagonal(shell.global_coordinates(), *absorber)
+        field = shell.interpolate(coeff)
+        operators = derivative_operators(shell)
+        if vector:
+            primary, flux = tensor * field, field.curl / (k * tensor)
+            equation = -k * primary.copy()
+            divergence = np.zeros_like(primary[0])
+            for axis in range(3):
+                b, c = (axis + 1) % 3, (axis + 2) % 3
+                equation[c] += partial(flux[b], axis, operators)
+                equation[b] -= partial(flux[c], axis, operators)
+                divergence += partial(primary[axis], axis, operators)
+            density = np.sum(abs(equation)**2, axis=0) + abs(divergence)**2
+            amplitude = np.sum(abs(primary)**2, axis=0)
+        else:
+            primary, flux = tensor[2] * field, tensor[:2] * field.grad / k
+            equation = k * primary
+            for axis in range(2):
+                equation += partial(flux[axis], axis, operators)
+            density = abs(equation)**2
+            amplitude = abs(primary)**2
+        volume += (h[cells]**2) @ np.maximum(0., np.sum(shell.dx * density, axis=1))
+        energy += np.sum(shell.dx * (amplitude + np.sum(abs(flux)**2, axis=0)))
+
+    # Both materials are vacuum on this interface; the stretch is unity at depth zero.
+    left, right = mesh.f2t
+    faces = np.flatnonzero((right >= 0) & ((left < count) != (right < count)))
+    for start in range(0, len(faces), 1024):
+        ids = faces[start:start + 1024]
+        if not np.any(coeff[dofs[:, mesh.f2t[:, ids]]]):
+            continue
+        traces = []
+        for side in (0, 1):
+            face = InteriorFacetBasis(mesh, basis.elem, facets=ids, side=side, dofs=basis.dofs,
+                                      intorder=quadrature_order,
+                                      disable_doflocs=True)
+            traces.append(face.interpolate(coeff))
+        a, b = traces
+        if vector:
+            jump = (abs(np.sum(face.normals * (a-b), axis=0))**2
+                    + np.sum(abs(np.cross(face.normals, (a.curl-b.curl)/k, axis=0))**2, axis=0))
+        else:
+            jump = abs(np.sum(face.normals * (a.grad-b.grad), axis=0) / k)**2
+        interface += np.mean(h[mesh.f2t[:, ids]], axis=0) @ np.maximum(0., np.sum(face.dx * jump, axis=1))
+    return {"pml_residual": float(np.sqrt(volume / scale)),
+            "pml_interface_residual": float(np.sqrt(interface / scale)),
+            "pml_field_norm_ratio": float(np.sqrt(max(0., energy) / scale))}
+
+
+class AbsorberCheck:
+    """Compare the same observable on two shells around an identical physical mesh."""
+
+    def __init__(self, tolerance, observable=None, max_refinements=3):
+        from fem.common.validation import positive_integer, positive_real
+        from fem.common.errors import ConfigurationError
+        self.tolerance = positive_real(tolerance, "pml_tolerance")
+        if observable is not None and not callable(observable):
+            raise ConfigurationError("pml_observable must be a function of the solved result.")
+        self.remaining = positive_integer(max_refinements, "max_pml_refinements", minimum=0)
+        self.observable = observable
+        self.previous = None
+
+    def measure(self, result, record):
+        if self.observable is not None:
+            name, value = "custom", self.observable(result)
+        elif hasattr(result, "s_parameters"):
+            name, value = "S", result.s_parameters
+        else:
+            if result.dimension == 2:
+                angle = 2 * np.pi * np.arange(36) / 36
+                directions = np.column_stack((np.cos(angle), np.sin(angle)))
+            else:
+                z = 1 - (2 * np.arange(36) + 1) / 36
+                phi = np.arange(36) * np.pi * (3 - np.sqrt(5))
+                r = np.sqrt(1 - z*z)
+                directions = np.column_stack((r*np.cos(phi), r*np.sin(phi), z))
+            name, value = "RCS", result.radar_cross_section(directions)
+        values = np.atleast_1d(np.asarray(value, dtype=complex)).copy()
+        if not values.size or not np.isfinite(values).all():
+            raise ValueError("PML observable must have nonempty finite values.")
+        record.update(pml_layers=result.mesh_data.info["pml_layers"], pml_observable=name,
+                      observable_values=values, pml_tolerance=self.tolerance)
+        status = "unchecked"
+        if all(record[key] == 0 for key in ("pml_field_norm_ratio", "pml_interface_residual", "pml_residual")):
+            status = "unexcited"
+        elif self.previous is not None:
+            if values.shape != self.previous.shape:
+                raise ValueError("PML observable shape changed between shell refinements.")
+            change = np.linalg.norm(values - self.previous) / max(
+                np.linalg.norm(values), np.linalg.norm(self.previous), np.finfo(float).tiny)
+            record["pml_observable_change"] = float(change)
+            status = "tolerance" if change <= self.tolerance else "unresolved"
+        record["pml_status"] = status
+        self.previous = values
+        return status in ("unexcited", "tolerance")

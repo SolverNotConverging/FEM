@@ -73,7 +73,15 @@ DESCRIPTIONS = {
 DESCRIPTIONS.update(
     {
         "backend": "Execution backend: auto (default) selects hybrid GPU Arnoldi/CPU Ritz when available, otherwise warns and selects SciPy CPU; hybrid, gpu (resident CUDA Ritz), and cpu explicitly select a backend.",
-        "geometry_tolerance": "Target chord sagitta on curved CAD edges, in metres. None uses curvature-based sizing.",
+        "anisotropic": "Use a directional MMG metric based on local residual-density gradients in nonperiodic 2D and 3D.",
+        "minimum_quality": "Optional lower bound on candidate simplex mean-ratio quality.",
+        "max_growth": "Optional maximum candidate-to-previous element-count ratio.",
+        "stagnation_window": "Consecutive insufficient reductions before stopping. None disables the check.",
+        "minimum_reduction": "Minimum fractional residual reduction per refinement for the stagnation check.",
+        "pml_tolerance": "Relative tolerance on the observable change after doubling shell layers. Defaults to adaptive_tolerance.",
+        "max_pml_refinements": "Maximum shell doublings within the overall refinement budget.",
+        "pml_observable": "Optional function returning a finite scalar or array from a result for the shell convergence check.",
+        "geometry_tolerance": "Target chord sagitta on curved CAD boundaries, in metres. None uses curvature-based sizing.",
         "max_dofs": "Maximum field-space size on an adaptive candidate mesh before eliminating boundary DOFs.",
         "pml_layers": "Number of partitions across each PML thickness.",
         "boundary_refinement": "Boundary mesh-size multiplier in (0, 1]; None disables boundary refinement.",
@@ -184,7 +192,7 @@ def render_references():
                 "component": "Incident, total or scattered field. Choose Et/Hz for 2D TE, Ez/Ht for 2D TM, or E/H in 3D. Full 2D arrows include 'Total E vector' and 'Total H vector'. RCS in either dimension, or Surface current on a 3D conductor.",
                 "material": "Isotropic bulk material, PEC, surface impedance or good conductor.",
             }
-            returns = {"mesh": "the physical mesh", "solve": "a ScatteringResult",
+            returns = {"configure_adaptivity": "None", "mesh": "the physical mesh", "solve": "a ScatteringResult",
                        "add_geometry": "None", "add_mesh_refinement": "None", "add_pml": "the PML profile", "add_nf2ff": "None", "show": "the displayed figure or plotter",
                        "plot": "a PyVista plotter for 3D or full vector views and a Matplotlib figure for planar fields and scattering width",
                        "vtk_datasets": "a VTK multiblock dataset",
@@ -265,6 +273,7 @@ def render_references():
                 obj = cls if method == "__init__" else getattr(cls, method)
                 returned = {
                     "__init__": f"a configured ``{solver}``",
+                    "configure_adaptivity": "None",
                     "mesh": "the initial mesh stored in ``mesh_data``",
                     "solve": "the physics-specific result stored in ``result``",
                     "show": "the interactive viewer window",

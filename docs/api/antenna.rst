@@ -419,12 +419,58 @@ Returns: None.
 
 Returns: the physical mesh.
 
+``AntennaSolver3D.configure_adaptivity``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    AntennaSolver3D.configure_adaptivity(*, minimum_quality=None, max_growth=None, stagnation_window=3, minimum_reduction=0.01, anisotropic=False)
+
+Set candidate simplex quality, per-pass growth and residual progress limits.
+
+.. list-table:: Arguments
+   :header-rows: 1
+   :widths: 16 20 12 16 36
+
+   * - Argument
+     - Type / units
+     - Required / optional
+     - Default
+     - Meaning
+   * - ``minimum_quality``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Optional lower bound on candidate simplex mean-ratio quality.
+   * - ``max_growth``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Optional maximum candidate-to-previous element-count ratio.
+   * - ``stagnation_window``
+     - ``int``
+     - Optional
+     - ``3``
+     - Consecutive insufficient reductions before stopping. None disables the check.
+   * - ``minimum_reduction``
+     - ``float``
+     - Optional
+     - ``0.01``
+     - Minimum fractional residual reduction per refinement for the stagnation check.
+   * - ``anisotropic``
+     - ``bool``
+     - Optional
+     - ``False``
+     - Use a directional MMG metric based on local residual-density gradients in nonperiodic 2D and 3D.
+
+Returns: None.
+
 ``AntennaSolver3D.solve``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-    AntennaSolver3D.solve(*, backend='auto', max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None)
+    AntennaSolver3D.solve(*, backend='auto', max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None, pml_tolerance=None, pml_observable=None, max_pml_refinements=3)
 
 Adapt against all independent port excitations, then report their coherent superposition.
 
@@ -462,6 +508,21 @@ Adapt against all independent port excitations, then report their coherent super
      - Optional
      - ``None``
      - Maximum field-space size on an adaptive candidate mesh before eliminating boundary DOFs.
+   * - ``pml_tolerance``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Relative tolerance on the observable change after doubling shell layers. Defaults to adaptive_tolerance.
+   * - ``pml_observable``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Optional function returning a finite scalar or array from a result for the shell convergence check.
+   * - ``max_pml_refinements``
+     - ``int``
+     - Optional
+     - ``3``
+     - Maximum shell doublings within the overall refinement budget.
 
 Returns: an AntennaResult.
 
@@ -470,7 +531,7 @@ Returns: an AntennaResult.
 
 .. code-block:: python
 
-    AntennaSolver3D.sweep(*, frequencies, backend='auto', max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None)
+    AntennaSolver3D.sweep(*, frequencies, backend='auto', max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None, pml_tolerance=None, pml_observable=None, max_pml_refinements=3)
 
 Adapt at the highest frequency in hertz and reuse that mesh at every lower frequency.
 
@@ -513,6 +574,21 @@ Adapt at the highest frequency in hertz and reuse that mesh at every lower frequ
      - Optional
      - ``None``
      - Maximum field-space size on an adaptive candidate mesh before eliminating boundary DOFs.
+   * - ``pml_tolerance``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Relative tolerance on the observable change after doubling shell layers. Defaults to adaptive_tolerance.
+   * - ``pml_observable``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Optional function returning a finite scalar or array from a result for the shell convergence check.
+   * - ``max_pml_refinements``
+     - ``int``
+     - Optional
+     - ``3``
+     - Maximum shell doublings within the overall refinement budget.
 
 Returns: an AntennaSweep.
 

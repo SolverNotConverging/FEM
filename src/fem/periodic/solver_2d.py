@@ -16,6 +16,7 @@ from typing import Any, Literal, TypeAlias
 from fem.common.discretization import DEFAULT_QUADRATURE_ORDER, field_orders
 from skfem import Basis
 import numpy as np
+from fem.common._mesh_sizing import refined_size_targets
 from fem.adaptivity._budget import check_candidate
 from fem.common._cell_material import CellMaterial
 from numpy.typing import NDArray
@@ -300,7 +301,10 @@ class PeriodicModeSolver2D(PeriodicScene2D, ModalSolverMixin):
         refinement = _positive_real(factor, "factor")
         if refinement <= 1.0:
             raise ConfigurationError("factor must be greater than one.")
+        self._require_current_systems()
+        pairs = np.column_stack((self.mesh_data.slave_nodes, self.mesh_data.master_nodes))
         return self._mesh_impl(
+            adaptive_sizes=refined_size_targets(self.mesh_data, refinement, pairs),
             max_element_size=float(self._discretization_settings["max_element_size"]) / refinement,
             geometry_tolerance=self._discretization_settings["geometry_tolerance"],
             pml_layers=self._discretization_settings["pml_layers"],

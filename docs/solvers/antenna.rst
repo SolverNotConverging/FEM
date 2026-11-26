@@ -151,7 +151,10 @@ each lower frequency. Port modes and surface impedances are recomputed at
 each frequency. The drive weights apply throughout. Both ``solve()`` and
 ``sweep()`` default to ``max_refinements=2`` and ``adaptive_tolerance=0.05``.
 The largest combined volume, interface and boundary residual across all independent port excitations
-controls early stopping. The highest-frequency case records the refinement
+controls physical refinement. For an excited PML, a second check compares the
+complex S-matrix while doubling shell layers on the same physical mesh. Set
+``pml_tolerance`` or pass ``pml_observable`` to monitor a radiation observable.
+The highest-frequency case records the refinement
 history. Each case records ``mesh_adaptation_frequency`` in ``solve_info``.
 The volume defaults to second-order Nédélec tetrahedra with two degrees of
 freedom per edge and two per face. The port solves its modes with the same
@@ -166,7 +169,7 @@ surface current. ``surface_current`` gives the face mean at either order.
 The sweep progress bar shows the frequency being solved. Adaptive diagnostics
 include the pass number, physical element count, residual, tolerance and
 stopping reason.
-Automatic meshing starts with six elements per local wavelength at order two
+Automatic meshing starts with four elements per local wavelength at order two
 and ten at order one. Each dielectric uses its own wavelength. During a sweep
 the highest frequency sets these initial sizes.
 SciPy and NVIDIA cuDSS are available through ``backend="cpu"``

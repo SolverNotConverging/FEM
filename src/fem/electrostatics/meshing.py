@@ -526,6 +526,9 @@ def discretize_simplices(
             gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
             gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 24)
             gmsh.model.mesh.generate(dim)
+            if adaptive_sizes is not None:
+                from fem.adaptivity.remeshing import adapt_cad_interiors
+                adapt_cad_interiors(gmsh, dim, adaptive_sizes, origin, scale)
 
             node_tags, coordinates, _ = gmsh.model.mesh.getNodes()
             points = np.asarray(coordinates, dtype=float).reshape(-1, 3)[:, :dim] / scale

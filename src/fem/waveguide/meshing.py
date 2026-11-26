@@ -839,6 +839,9 @@ def discretize_2d(
             # default Frontal-Delaunay algorithm.
             gmsh.option.setNumber("Mesh.Algorithm", 5)
             gmsh.model.mesh.generate(2)
+            if adaptive_sizes is not None:
+                from fem.adaptivity.remeshing import adapt_cad_interiors
+                adapt_cad_interiors(gmsh, 2, adaptive_sizes, (xmin, ymin), scale)
 
             node_tags, coordinates, _ = gmsh.model.mesh.getNodes()
             points = np.asarray(coordinates, dtype=float).reshape(-1, 3)[:, :2] / scale

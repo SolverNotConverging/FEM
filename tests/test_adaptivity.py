@@ -72,6 +72,8 @@ def test_default_budget_refines_coarse_modes_and_reduces_residual(kind):
     result = solver.solve(adaptive_tolerance=1e-5, **options)
     info = diagnostics(result)
     history = info["adaptive_history"]
+    expected_backend = {"scalar": "native", "vector": "mmg2d", "periodic": "gmsh"}[kind]
+    assert all(row["refinement_backend"] == expected_backend for row in history[:-1])
     assert info["max_refinements"] == 2
     assert len(history) == 3
     assert history[-1]["status"] == "refinement_limit"
@@ -93,6 +95,7 @@ def test_3d_periodic_coarse_start_regenerates_valid_constraints():
     history = result.metadata["adaptive_history"]
     assert len(history) == 3
     assert history[-1]["status"] == "refinement_limit"
+    assert all(row["refinement_backend"] == "gmsh" for row in history[:-1])
     assert result[0].residual < 1e-8
     expected = np.sqrt(2.25 - (np.pi / (.02 * solver.k0))**2)
     assert abs(result[0].neff - expected) < .01
@@ -293,3 +296,176 @@ def test_smooth_field_with_no_jumps_has_nonzero_volume_residuals():
     assert parts["interface"] < 1e-12
     assert parts["element_pde"] > 0 and parts["divergence"] > 0
     assert residual == pytest.approx(np.linalg.norm(list(parts.values())))
+
+
+def test_manual_refinement_preserves_coax_field_accuracy():
+    from benchmarks.analytical.coaxial_waveguide_adaptivity import make_solver, field_errors, INNER_RADIUS
+    solver = make_solver()
+    options = dict(num_modes=1, backend="cpu", dense_linearization_limit=4, adaptive_tolerance=1e-10)
+    before = solver.solve(max_refinements=3, **options)
+    after_mesh = solver.refine(1.5)
+    after = solver.solve(max_refinements=0, **options)
+
+    def near_conductor(mesh):
+        vertices = mesh.coordinates[mesh.elements]
+        near = np.linalg.norm(vertices.mean(axis=1), axis=1) < 1.5 * INNER_RADIUS
+        return np.median(np.linalg.norm(vertices[near, 1] - vertices[near, 0], axis=1))
+
+    assert after_mesh.info.elements > len(before.mesh_data.elements)
+    assert near_conductor(after.mesh_data) < near_conductor(before.mesh_data)
+    assert field_errors(after[0])["electric_relative_l2_error"] < field_errors(before[0])["electric_relative_l2_error"]
+
+
+def test_failed_periodic_solve_refines_the_accepted_local_mesh(monkeypatch):
+    from fem.periodic.exceptions import SolverError
+    solver, options = modal_case("periodic")
+    previous = solver.solve(**options, backend="cpu", max_refinements=3, adaptive_tolerance=1e-8)
+    native_solve = solver._solve_once
+    def fail_once(*args, **kwargs):
+        monkeypatch.setattr(solver, "_solve_once", native_solve)
+        raise SolverError("retry on a finer mesh")
+    monkeypatch.setattr(solver, "_solve_once", fail_once)
+    result = solver.solve(**options, backend="cpu", max_refinements=1, adaptive_tolerance=1e-8)
+    assert result.solve_info["adaptive_history"][0]["status"] == "solve_failed"
+    assert len(result.mesh_data.elements) > len(previous.mesh_data.elements)
+    assert result.solve_info["adaptive_residual"] < previous.solve_info["adaptive_residual"]
+
+
+@pytest.mark.parametrize("shape, exact", [
+    (shapes.Sphere(center=(.5, .5, .5), radius=.1), 4 * np.pi * .1**3 / 3),
+    (shapes.Cylinder(center=(.5, .5), radius=.1, z_range=(.2, .8)), .6 * np.pi * .1**2),
+])
+def test_periodic_3d_curvature_controls_material_volume(shape, exact):
+    solver = PeriodicModeSolver3D(frequency=c, x_range=1., y_range=1., z_range=1.)
+    solver.add_geometry(shape=shape, material=materials.Material(epsilon=2))
+    errors = []
+    for tolerance in (None, .00035):
+        mesh = solver.mesh(geometry_tolerance=tolerance, element_order=1)
+        points = mesh.nodes[mesh.elements[mesh.element_tags == 2]]
+        volume = abs(np.linalg.det(points[:, 1:] - points[:, :1])).sum() / 6
+        errors.append(abs(volume / exact - 1))
+        slave, master = mesh.periodic_node_pairs.T
+        np.testing.assert_allclose(mesh.nodes[slave, :2], mesh.nodes[master, :2], atol=1e-12)
+    assert errors[1] < errors[0] < .04
+    assert solver._discretize_options["geometry_tolerance"] == tolerance
+
+
+def test_linear_interval_estimator_integrates_odd_primary_field():
+    from fem.waveguide.adaptive import estimate_1d
+    def material(x):
+        return (np.ones((3, *x.shape)),) * 2
+    mesh = SimpleNamespace(nodes=np.array([0., 1.]), info=SimpleNamespace(element_order=1), element_tags=None)
+    solver = SimpleNamespace(mesh_data=mesh, geometry=SimpleNamespace(
+        transformed_material_at=material, pmls=[], outer_boundary="pec"),
+        k0=1., _quadrature_order=2, _boundary_masks=lambda x: (np.zeros(len(x)-1, bool), *np.zeros((2, len(x)), bool)))
+    mode = SimpleNamespace(polarization="TE", neff=0., metadata={"nodal_primary": [-1., 1.],
+        "midpoint_primary": [0.]}, fields=SimpleNamespace(metadata={"active_elements": [True]}))
+    _, residual, components, _ = estimate_1d(solver, [mode])
+    assert components["element_pde"] == pytest.approx(1/np.sqrt(13))
+    assert residual == pytest.approx(components["element_pde"])
+
+
+@pytest.mark.parametrize("policy, status", [({"max_growth": 1.01}, "growth_limit"),
+                                           ({"minimum_quality": .99}, "quality_limit")])
+def test_bad_candidate_restores_periodic_mesh(policy, status):
+    solver, options = modal_case("periodic")
+    mesh = solver.mesh()
+    solver.configure_adaptivity(**policy)
+    result = solver.solve(**options, backend="cpu", max_refinements=2, adaptive_tolerance=1e-10)
+    assert solver.mesh_data is mesh
+    assert result.solve_info["adaptive_history"][-1]["status"] == status
+    assert not result.solve_info["adaptive_converged"]
+
+
+def test_stagnation_retains_solution_and_names_dominant_component():
+    @dataclass
+    class Result:
+        metadata: dict
+
+    owner = SimpleNamespace(mesh=1)
+    def refine(_):
+        owner.mesh += 1
+    result = run_adaptive(owner, lambda: Result({}), lambda r: (np.ones(1), 1., {"interface": 1.}),
+                          refine, max_refinements=6, adaptive_tolerance=.1)
+    final = result.metadata["adaptive_history"][-1]
+    assert (owner.mesh, final["status"], final["dominant_component"]) == (4, "stagnation", "interface")
+    assert final["stagnating_components"] == ["interface"]
+
+
+def test_default_periodic_3d_curvature_resolves_a_subcell_inclusion():
+    radius = .008
+    solver = PeriodicModeSolver3D(frequency=c, x_range=1., y_range=1., z_range=1.)
+    solver.add_geometry(shape=shapes.Sphere(center=(.5, .5, .5), radius=radius),
+                        material=materials.Material(epsilon=2))
+    mesh = solver.mesh(element_order=1)
+    points = mesh.nodes[mesh.elements[mesh.element_tags == 2]]
+    volume = abs(np.linalg.det(points[:, 1:] - points[:, :1])).sum() / 6
+    assert volume == pytest.approx(4*np.pi*radius**3 / 3, rel=.04)
+
+
+def test_periodic_3d_refinement_preserves_narrow_gap():
+    solver = PeriodicModeSolver3D(frequency=c, x_range=1., y_range=1., z_range=1.)
+    for interval in ((0., .49), (.51, 1.)):
+        solver.add_geometry(shape=shapes.Box(bounds=(interval, (0., 1.), (0., 1.))),
+                            material=materials.Material(epsilon=2))
+    mesh = solver.mesh(element_order=1, geometry_tolerance=.002, max_element_size=.3)
+    for generation in range(2):
+        if generation:
+            mesh = solver.refine(1.2)
+        vertices = mesh.nodes[mesh.elements[mesh.element_tags == 1]]
+        volume = abs(np.linalg.det(vertices[:, 1:] - vertices[:, :1])).sum() / 6
+        assert volume == pytest.approx(.02)
+        assert vertices[..., 0].min() == pytest.approx(.49)
+        assert vertices[..., 0].max() == pytest.approx(.51)
+        slave, master = mesh.periodic_node_pairs.T
+        np.testing.assert_allclose(mesh.nodes[slave, :2], mesh.nodes[master, :2], atol=1e-12)
+        assert solver._discretize_options["geometry_tolerance"] == .002
+
+
+@pytest.mark.parametrize("dim", [2, 3])
+def test_mmg_directional_adaptation_preserves_charge_and_tags(dim):
+    import fem
+    from fem.electrostatics.solver import EPSILON_0
+    shape = shapes.Rectangle if dim == 2 else shapes.Box
+    solver = fem.ElectrostaticSolver(dim=dim)
+    slab = shape(bounds=((.4, .6),) + ((0., 1.),)*(dim-1))
+    solver.add_geometry(shape=slab, material=fem.Material(epsilon=2.), name="charged slab")
+    solver.add_charge_density(geometry=slab, density=EPSILON_0)
+    solver.mesh(max_element_size=.31, element_order=1, boundary_refinement=None)
+    solver.configure_adaptivity(anisotropic=True)
+    result = solver.solve(max_refinements=1, adaptive_tolerance=1e-8, backend="cpu")
+    first, last = result.adaptive_history
+    assert first["refinement_backend"] == f"mmg{dim}d" and "fallback_reason" not in first
+    assert last["elements"] > first["elements"]
+    centers = result.coordinates[result.elements].mean(axis=1)
+    inside = (centers[:, 0] > .4) & (centers[:, 0] < .6)
+    slab_tag = next(k for k, name in result.mesh.physical_names.items() if name == "charged slab")
+    np.testing.assert_array_equal(result.mesh.element_tags == slab_tag, inside)
+    np.testing.assert_allclose(result.mesh.charge_density / EPSILON_0, inside)
+    assert abs(sum(result.conductor_charges.values()) / EPSILON_0 + .2) < 1e-9
+
+
+def test_mmg_metric_refines_across_residual_gradient():
+    from fem.adaptivity.remeshing import _directional_metric, _relative_gradients
+    centers = np.stack(np.meshgrid(np.arange(3.), np.arange(3.)), axis=-1).reshape(-1, 2)
+    _, gradient = _relative_gradients(centers, centers[:, 0]+1.)
+    metric, = _directional_metric(gradient[4:5], np.ones(1))
+    assert metric[0, 0] > metric[1, 1] > 0.
+    assert abs(metric[0, 1]) < 1e-12
+
+
+def test_mmg_failure_retries_gmsh_with_diagnostic(monkeypatch):
+    import fem
+    import fem.adaptivity.remeshing as remeshing
+    adapt_region = remeshing._adapt_region
+    def shifted_candidate(*args):
+        vertices, cells = adapt_region(*args)
+        return vertices + .001, cells
+    monkeypatch.setattr(remeshing, "_adapt_region", shifted_candidate)
+    solver = fem.ElectrostaticSolver(dim=2)
+    solver.add_charge_density(geometry=shapes.Rectangle(bounds=((0., 1.),)*2), density=1e-11)
+    solver.mesh(max_element_size=.3, element_order=1)
+    result = solver.solve(backend="cpu", adaptive_tolerance=1e-8, max_refinements=1)
+    first, last = result.adaptive_history
+    assert first["refinement_backend"] == "gmsh" and "protected vertex" in first["fallback_reason"]
+    assert last["elements"] > first["elements"]

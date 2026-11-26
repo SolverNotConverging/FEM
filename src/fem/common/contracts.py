@@ -101,6 +101,26 @@ def _context_value(value):
 
 class SolverMixin:
     """Result presentation and finalization shared by public solver classes."""
+    def configure_adaptivity(self, *, minimum_quality=None, max_growth=None,
+                             stagnation_window=3, minimum_reduction=0.01, anisotropic=False):
+        """Set candidate simplex quality, per-pass growth and residual progress limits."""
+        from .validation import finite_real, positive_integer
+        quality = None if minimum_quality is None else finite_real(minimum_quality, "minimum_quality")
+        growth = None if max_growth is None else finite_real(max_growth, "max_growth")
+        reduction = finite_real(minimum_reduction, "minimum_reduction")
+        window = None if stagnation_window is None else positive_integer(stagnation_window, "stagnation_window")
+        if quality is not None and not 0 <= quality <= 1:
+            raise ConfigurationError("minimum_quality must be between zero and one.")
+        if growth is not None and growth <= 1:
+            raise ConfigurationError("max_growth must exceed one.")
+        if not 0 <= reduction < 1:
+            raise ConfigurationError("minimum_reduction must be in [0, 1).")
+        if not isinstance(anisotropic, (bool, np.bool_)):
+            raise ConfigurationError("anisotropic must be a boolean.")
+        self._anisotropic_amr = bool(anisotropic)
+        self._candidate_policy = quality, growth
+        self._progress_policy = window, reduction
+
     def show(self, *, block: bool = True):
         if self.result is None:
             raise NoResultError("Call solve() before show(); the solver has no current result.")

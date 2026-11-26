@@ -3,7 +3,7 @@
     "path": "fem.antenna",
     "exports": ["AntennaSolver3D", "AntennaResult", "AntennaSweep", "RadiationPattern"],
     "solvers": {
-      "AntennaSolver3D": ["__init__", "add_geometry", "add_mesh_refinement", "add_pml", "add_nf2ff", "add_waveguide_port", "add_discrete_port", "solve_port_modes", "set_excitation", "mesh", "solve", "sweep", "show"]
+      "AntennaSolver3D": ["__init__", "add_geometry", "add_mesh_refinement", "add_pml", "add_nf2ff", "add_waveguide_port", "add_discrete_port", "solve_port_modes", "set_excitation", "mesh", "configure_adaptivity", "solve", "sweep", "show"]
     },
     "results": {
       "AntennaResult": ["far_field", "show_port_modes", "plot", "show", "save"],
@@ -35,6 +35,7 @@
         "remove",
         "refine",
         "mesh",
+        "configure_adaptivity",
         "solve",
         "sweep",
         "show"
@@ -53,6 +54,7 @@
         "remove",
         "refine",
         "mesh",
+        "configure_adaptivity",
         "solve",
         "sweep",
         "show"
@@ -97,6 +99,7 @@
         "remove",
         "refine",
         "mesh",
+        "configure_adaptivity",
         "solve",
         "sweep",
         "show"
@@ -115,6 +118,7 @@
         "remove",
         "refine",
         "mesh",
+        "configure_adaptivity",
         "solve",
         "sweep",
         "show"
@@ -152,6 +156,7 @@
           "add_pml",
           "add_nf2ff",
         "mesh",
+        "configure_adaptivity",
         "solve",
         "show"
       ],
@@ -162,6 +167,7 @@
           "add_pml",
           "add_nf2ff",
         "mesh",
+        "configure_adaptivity",
         "solve",
         "show"
       ]
@@ -202,6 +208,7 @@
         "add_charge_density",
         "remove",
         "mesh",
+        "configure_adaptivity",
         "solve",
         "show"
       ]

@@ -9,7 +9,7 @@ from typing import Mapping
 from uuid import uuid4
 
 import numpy as np
-from fem.common._mesh_sizing import append_size_view, size_view
+from fem.common._mesh_sizing import append_size_view, curve_size_fields, size_view
 from numpy.typing import NDArray
 from skfem import MeshTet
 
@@ -172,6 +172,7 @@ def discretize_3d(
     geometry: GeometryModel3D,
     *,
     adaptive_sizes=None,
+    geometry_tolerance: float | None = None,
     max_element_size: float | None = None,
     wavelength_elements: int = 8,
     material_aware: bool = True,
@@ -439,7 +440,6 @@ def discretize_3d(
                     )
                 surface_groups[f"outer_{geometry.outer_boundary}"].add(surface)
 
-            target_sizes = [maximum]
             sizing_fields: list[int] = []
             background_scale = max(
                 _material_scale(geometry.background), np.finfo(float).tiny
@@ -458,7 +458,6 @@ def discretize_3d(
                     gmsh.model.mesh.field.setNumber(field, "VOut", maximum * scale)
                     gmsh.model.mesh.field.setNumbers(field, "VolumesList", selected)
                     sizing_fields.append(field)
-                    target_sizes.append(target)
             for refinement in geometry.refinements:
                 selected = sorted(memberships[refinement.id] & solve_set)
                 if not selected:
@@ -469,7 +468,6 @@ def discretize_3d(
                 gmsh.model.mesh.field.setNumber(field, "VOut", maximum * scale)
                 gmsh.model.mesh.field.setNumbers(field, "VolumesList", selected)
                 sizing_fields.append(field)
-                target_sizes.append(target)
 
             # Internal PEC objects create geometric edges and current
             # crowding that require local resolution.  Uniform outer guide
@@ -502,11 +500,10 @@ def discretize_3d(
                     threshold, "DistMax", 2.0 * maximum * scale
                 )
                 sizing_fields.append(threshold)
-                target_sizes.append(pec_target)
             if adaptive_sizes is not None:
-                target_sizes.append(float(np.min(adaptive_sizes[1])))
                 view = size_view(gmsh, adaptive_sizes, (xmin, ymin, zmin), scale)
                 append_size_view(gmsh, view, sizing_fields)
+            sizing_fields.extend(curve_size_fields(gmsh, geometry_tolerance, scale, maximum, surfaces=True))
             if len(sizing_fields) == 1:
                 gmsh.model.mesh.field.setAsBackgroundMesh(sizing_fields[0])
             elif sizing_fields:
@@ -515,12 +512,10 @@ def discretize_3d(
                 gmsh.model.mesh.field.setAsBackgroundMesh(combined)
 
             gmsh.option.setNumber("Mesh.MeshSizeMax", maximum * scale)
-            gmsh.option.setNumber(
-                "Mesh.MeshSizeMin", max(min(target_sizes) * scale * 0.05, 1e-12)
-            )
+            gmsh.option.setNumber("Mesh.MeshSizeMin", 1e-12)
             gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
             gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
-            gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+            gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 24)
             gmsh.model.mesh.setSize(gmsh.model.getEntities(0), maximum * scale)
             gmsh.model.mesh.generate(3)
 

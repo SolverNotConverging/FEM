@@ -14,10 +14,24 @@ def resource_limits(max_elements, max_dofs):
                  for value, name in ((max_elements, "max_elements"), (max_dofs, "max_dofs")))
 
 
-def check_candidate(owner, mesh, order, mixed=False):
+def check_mesh_policy(owner, mesh, previous_count, physical=None):
+    quality, growth = getattr(owner, "_candidate_policy", (None, None))
+    if growth is not None and mesh.nelements > previous_count * growth:
+        raise RefinementLimit("growth_limit", f"Candidate grew from {previous_count} to {mesh.nelements} cells.")
+    if quality is not None:
+        from .policy import mesh_quality
+        minimum = mesh_quality(mesh if physical is None else physical)["minimum_quality"]
+        if minimum < quality:
+            raise RefinementLimit("quality_limit", f"Candidate minimum quality {minimum:g} is below {quality:g}.")
+
+
+def check_candidate(owner, mesh, order, mixed=False, *, physical=None):
     limits = getattr(owner, "_adaptive_limits", None)
     if limits is None:
         return
+    previous_count = getattr(owner, "_previous_cell_count", None)
+    if previous_count is not None:
+        check_mesh_policy(owner, mesh, previous_count, physical)
     elements, dofs = limits
     if elements is not None and mesh.nelements > elements:
         raise RefinementLimit("element_limit", f"Candidate has {mesh.nelements} elements (budget {elements}).")

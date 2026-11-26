@@ -213,6 +213,8 @@ class ResultViewer:
         self._window.resize(1100, 760)
         self._canvas: Any = None
         self._plotter: Any = None
+        self._view_key = None
+        self._views = {}
         self._update_phase = None
 
         central = QWidget()
@@ -260,7 +262,12 @@ class ResultViewer:
             self._layout.addLayout(controls)
         self._body = QVBoxLayout()
         self._layout.addLayout(self._body, 1)
-        self._layout.addWidget(self._info)
+        footer = QHBoxLayout()
+        footer.addWidget(self._info, 1)
+        self._reset_view = QPushButton("Reset view")
+        self._reset_view.clicked.connect(self._reset_current_view)
+        footer.addWidget(self._reset_view)
+        self._layout.addLayout(footer)
         self._window.setCentralWidget(central)
         self._status = self._window.statusBar()
 
@@ -379,27 +386,107 @@ class ResultViewer:
         if self._plotter is not None:
             self._plotter.close()
             self._plotter = None
+        if self._canvas is not None:
+            from matplotlib import pyplot
+            pyplot.close(self._canvas.figure)
         while self._body.count():
             item = self._body.takeAt(0)
             if item.widget() is not None:
                 item.widget().deleteLater()
         self._canvas = None
 
+    def _remember_view(self):
+        if self._view_key is None:
+            return
+        if self._plotter is not None:
+            camera = self._plotter.camera.NewInstance()
+            camera.DeepCopy(self._plotter.camera)
+            self._views[self._view_key] = camera
+        elif self._canvas is not None:
+            self._views[self._view_key] = [
+                (ax.get_xlim(), ax.get_ylim(), ax.get_position().frozen()) for ax in self._canvas.figure.axes
+                if ax.get_label() != "<colorbar>"
+            ]
+
+    def _view_from_plane(self, case):
+        """Open a vector field at the location and scale of its planar plot."""
+        xlim, ylim, _ = self._views[("axes", "field")][0]
+        mesh = self._source.mesh_data(case)
+        line = mesh is not None and len(mesh.axes) == 1
+        right = np.array([np.sign(xlim[1] - xlim[0]), 0., 0.])
+        up = np.array([0., 0., 1.] if self._source.family == "fem.periodic" else [0., 1., 0.])
+        focus = np.array([np.mean(xlim), 0., 0.])
+        if not line:
+            focus += np.mean(ylim) * up
+            up *= np.sign(ylim[1] - ylim[0])
+        rect = self._body.geometry()
+        aspect = max(rect.width(), 1) / max(rect.height(), 1)
+        height = max(abs(xlim[1] - xlim[0]) / aspect, 0. if line else abs(ylim[1] - ylim[0]))
+        camera = self._plotter.camera
+        camera.position = focus + np.cross(right, up) * max(camera.distance, height)
+        camera.focal_point = focus
+        camera.up = up
+        camera.parallel_projection = True
+        camera.parallel_scale = height / 2
+        self._plotter.reset_camera_clipping_range()
+
+    def _reset_current_view(self):
+        self._views.pop(self._view_key, None)
+        self._view_key = None
+        self._clear_body()
+        self._render()
+
     def _render(self) -> None:
         component = self._component.currentText()
         quantity = self._quantity.currentText()
         mode = self._mode.value() - self._mode.minimum()
-        self._clear_body()
+        previous_key = self._view_key
+        self._remember_view()
+        network = self._source.antenna and component in ("S-parameters", "Frequency sweep")
+        vtk = not network and (self._source.is_3d or component.endswith(" vector"))
+        space = "field" if vtk or self._mesh.isEnabled() else component
+        key = ("vtk" if vtk else "axes", space)
+        if vtk and self._plotter is not None:
+            self._update_phase = None
+            self._plotter.suppress_rendering = True
+            self._plotter.renderer.clear_actors()
+            self._plotter.scalar_bars.clear()
+        else:
+            self._clear_body()
+        self._view_key = None
         message = ""
         try:
             case = self._current_case()
-            if self._source.antenna and component in ("S-parameters", "Frequency sweep"):
+            if network:
                 result = case if component == "S-parameters" else self._source.result
                 widget = self._matplotlib(result.plot(quantity=quantity))
-            elif self._source.is_3d or component.endswith(" vector"):
+            elif vtk:
                 widget, message = self._pyvista(case, mode, component, quantity)
             else:
                 widget, message = self._field_2d(case, mode, component, quantity)
+            saved = self._views.get(key)
+            if self._plotter is not None:
+                if saved is None:
+                    self._plotter.view_isometric()
+                    if previous_key == ("axes", "field") and not self._source.is_3d:
+                        self._view_from_plane(case)
+                else:
+                    camera = self._plotter.camera
+                    camera.DeepCopy(saved)
+                    camera.parallel_projection = bool(saved.GetParallelProjection())
+                    camera.is_set = True
+                self._plotter.suppress_rendering = False
+                self._plotter.render()
+            elif saved is not None:
+                axes = [ax for ax in self._canvas.figure.axes if ax.get_label() != "<colorbar>"]
+                for ax, (xlim, ylim, position) in zip(axes, saved):
+                    if space == "field":
+                        # Adding/removing a colour bar can move the data on screen
+                        # even when the numerical axis limits are unchanged.
+                        ax.set_position(position)
+                    ax.set(xlim=xlim, ylim=ylim)
+                self._canvas.draw_idle()
+            self._view_key = key
             self._info.setText(self._source.info(case, mode))
             if message:
                 self._status.showMessage(message)
@@ -407,9 +494,11 @@ class ResultViewer:
                 self._status.clearMessage()
         except Exception as exc:  # keep the window usable when a combination is invalid
             from PySide6.QtWidgets import QLabel
+            self._clear_body()
             widget = QLabel(f"Cannot display this selection: {exc}")
             self._status.showMessage(str(exc))
-        self._body.addWidget(widget)
+        if self._body.indexOf(widget) < 0:
+            self._body.addWidget(widget)
 
     def _field_figure(self, case: Any, mode: int, component: str, quantity: str):
         family = self._source.family
@@ -490,7 +579,9 @@ class ResultViewer:
     def _pyvista(self, case: Any, mode: Any, component: str, quantity: str):
         from pyvistaqt import QtInteractor
 
-        plotter = QtInteractor(self._window)
+        if self._plotter is None:
+            self._plotter = QtInteractor(self._window)
+        plotter = self._plotter
         overlays = dict(mesh_overlay=self._mesh.isChecked(), material=self._material.isChecked())
         if self._source.static:
             from fem.electrostatics.result_api import draw_3d
@@ -507,7 +598,6 @@ class ResultViewer:
                                   component.removesuffix(" vector"),
                                   quantity, boundary_facets=case.metadata.get("boundary_facets"),
                                   **overlays)
-        self._plotter = plotter
         return plotter.interactor, message
 
     # -- public ------------------------------------------------------------
@@ -747,14 +837,15 @@ def add_arrows(plotter: Any, points: np.ndarray, components: list[np.ndarray], q
     span = float(np.max(np.ptp(points, axis=0))) or 1.0
     largest = float(magnitude.max() if actor_name else np.max(np.linalg.norm(shown, axis=1))) or 1.0
     arrows = cloud.glyph(orient="vectors", scale="vectors", factor=0.08 * span / largest)
+    arrows.set_active_scalars(label)
     if actor_name and actor_name in plotter.actors:
         # Update the glyphs on phase changes without reframing the camera.
-        arrows.set_active_scalars(label)
         mapper = plotter.actors[actor_name].mapper
         mapper.dataset.copy_from(arrows, deep=False)
         mapper.update()
     else:
-        plotter.add_mesh(arrows, scalars=label, cmap="viridis", name=actor_name)
+        actor = plotter.add_mesh(arrows, scalars=label, cmap="viridis", name=actor_name)
+        actor.mapper.update()
     return arrows
 
 

@@ -394,6 +394,52 @@ Build the initial mesh; solve() may subsequently refine it.
 
 Returns: the initial mesh stored in ``mesh_data``.
 
+``ModeSolver1D.configure_adaptivity``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    ModeSolver1D.configure_adaptivity(*, minimum_quality=None, max_growth=None, stagnation_window=3, minimum_reduction=0.01, anisotropic=False)
+
+Set candidate simplex quality, per-pass growth and residual progress limits.
+
+.. list-table:: Arguments
+   :header-rows: 1
+   :widths: 16 20 12 16 36
+
+   * - Argument
+     - Type / units
+     - Required / optional
+     - Default
+     - Meaning
+   * - ``minimum_quality``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Optional lower bound on candidate simplex mean-ratio quality.
+   * - ``max_growth``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Optional maximum candidate-to-previous element-count ratio.
+   * - ``stagnation_window``
+     - ``int``
+     - Optional
+     - ``3``
+     - Consecutive insufficient reductions before stopping. None disables the check.
+   * - ``minimum_reduction``
+     - ``float``
+     - Optional
+     - ``0.01``
+     - Minimum fractional residual reduction per refinement for the stagnation check.
+   * - ``anisotropic``
+     - ``bool``
+     - Optional
+     - ``False``
+     - Use a directional MMG metric based on local residual-density gradients in nonperiodic 2D and 3D.
+
+Returns: None.
+
 ``ModeSolver1D.solve``
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -988,7 +1034,7 @@ Build the initial mesh; solve() may subsequently refine it.
      - ``float | None``
      - Optional
      - ``None``
-     - Target chord sagitta on curved CAD edges, in metres. None uses curvature-based sizing.
+     - Target chord sagitta on curved CAD boundaries, in metres. None uses curvature-based sizing.
    * - ``max_element_size``
      - ``float | None``
      - Optional
@@ -1041,6 +1087,52 @@ Build the initial mesh; solve() may subsequently refine it.
      - Polynomial integration degree for finite-element assembly. Defaults to five.
 
 Returns: the initial mesh stored in ``mesh_data``.
+
+``ModeSolver2D.configure_adaptivity``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    ModeSolver2D.configure_adaptivity(*, minimum_quality=None, max_growth=None, stagnation_window=3, minimum_reduction=0.01, anisotropic=False)
+
+Set candidate simplex quality, per-pass growth and residual progress limits.
+
+.. list-table:: Arguments
+   :header-rows: 1
+   :widths: 16 20 12 16 36
+
+   * - Argument
+     - Type / units
+     - Required / optional
+     - Default
+     - Meaning
+   * - ``minimum_quality``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Optional lower bound on candidate simplex mean-ratio quality.
+   * - ``max_growth``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Optional maximum candidate-to-previous element-count ratio.
+   * - ``stagnation_window``
+     - ``int``
+     - Optional
+     - ``3``
+     - Consecutive insufficient reductions before stopping. None disables the check.
+   * - ``minimum_reduction``
+     - ``float``
+     - Optional
+     - ``0.01``
+     - Minimum fractional residual reduction per refinement for the stagnation check.
+   * - ``anisotropic``
+     - ``bool``
+     - Optional
+     - ``False``
+     - Use a directional MMG metric based on local residual-density gradients in nonperiodic 2D and 3D.
+
+Returns: None.
 
 ``ModeSolver2D.solve``
 ~~~~~~~~~~~~~~~~~~~~~~

@@ -6,6 +6,7 @@ from math import factorial
 
 import numpy as np
 from skfem import InteriorFacetBasis
+from .remeshing import adapt_candidate
 from ._budget import RefinementLimit, field_dofs, resource_limits
 from ._volume import derivative_operators, material_from_volume, modal_volume
 from fem.common.discretization import DEFAULT_QUADRATURE_ORDER
@@ -33,8 +34,18 @@ def validate_controls(max_refinements, adaptive_tolerance, error_type=ValueError
     return int(max_refinements), float(adaptive_tolerance)
 
 
+def stagnating(owner, history):
+    window, reduction = getattr(owner, "_progress_policy", (3, .01))
+    if window is None or len(history) <= window:
+        return False
+    recent = history[-window-1:]
+    if any(r["status"] not in ("refine", "refined") for r in recent[:-1]):
+        return False
+    return all(b["residual"] >= (1 - reduction) * a["residual"] for a, b in zip(recent, recent[1:]))
+
+
 def run_adaptive(owner, solve_once, estimate, refine, *, max_refinements,
-                 adaptive_tolerance, error_type=ValueError, retry_errors=(), max_elements=None, max_dofs=None):
+                 adaptive_tolerance, error_type=ValueError, retry_errors=(), max_elements=None, max_dofs=None, absorber=None, periodic=False):
     """Perform one initial solve and at most max_refinements mesh updates.
 
     An exhausted budget returns the last solution with converged=False.  A
@@ -44,32 +55,69 @@ def run_adaptive(owner, solve_once, estimate, refine, *, max_refinements,
     limit, tolerance = validate_controls(max_refinements, adaptive_tolerance, error_type)
     limits = resource_limits(max_elements, max_dofs)
 
-    def update_mesh(weights):
+    def restore(state):
+        owner.__dict__.clear()
+        owner.__dict__.update(state)
+
+    def update_mesh(weights, *, shell=False):
         saved = owner.__dict__.copy()
         owner._adaptive_limits = limits
+        data = getattr(owner, "mesh_data", None)
+        native = getattr(data, "mesh", getattr(owner, "_mesh", None))
+        owner._previous_cell_count = getattr(native, "nelements", None)
         try:
-            refine(weights)
+            if shell:
+                owner._refine_absorber()
+                history[-1]["refinement_backend"] = "pml_layers"
+            elif native is not None:
+                adapt_candidate(owner, native.dim(), weights, lambda: refine(weights), history[-1], periodic=periodic)
+            else:
+                refine(weights)
         except Exception:
-            owner.__dict__.clear()
-            owner.__dict__.update(saved)
+            restore(saved)
             raise
         finally:
             owner.__dict__.pop("_adaptive_limits", None)
+            owner.__dict__.pop("_previous_cell_count", None)
 
     history = []
+    last_usable = None
     for iteration in range(limit + 1):
         try:
             result = solve_once()
         except retry_errors as exc:
             history.append({"refinement": iteration, "residual": None,
                             "status": "solve_failed", "message": str(exc)})
-            if iteration == limit:
+            try:
+                if iteration == limit:
+                    raise
+                update_mesh(None)
+                continue
+            except retry_errors + (RefinementLimit,) as failure:
+                if last_usable is None:
+                    raise
+                saved, result, residual = last_usable
+                restore(saved)
+                history[-1].update(status=getattr(failure, "status", "solve_failed"),
+                                   message=str(failure), restored_last_solution=True)
+                converged = False
+                break
+            except Exception:
+                if last_usable is not None:
+                    restore(last_usable[0])
                 raise
-            update_mesh(None)
-            continue
-        indicators, residual, *components = estimate(result)
-        if not np.isfinite(residual):
-            raise error_type("Adaptive discretization residual is non-finite.")
+        except Exception:
+            if last_usable is not None:
+                restore(last_usable[0])
+            raise
+        try:
+            indicators, residual, *components = estimate(result)
+            if not np.isfinite(residual):
+                raise error_type("Adaptive discretization residual is non-finite.")
+        except Exception:
+            if last_usable is not None:
+                restore(last_usable[0])
+            raise
         converged = residual <= tolerance
         status = "tolerance" if converged else "refinement_limit" if iteration == limit else "refine"
         history.append({"refinement": iteration, "elements": len(indicators),
@@ -92,19 +140,52 @@ def run_adaptive(owner, solve_once, estimate, refine, *, max_refinements,
                 history[-1]["mesh_elements"] = mesh.nelements
         modes = getattr(result, "modes", ())
         pml_fractions = [m.pml_fraction for m in modes if getattr(m, "pml_fraction", None) is not None]
+        if modes:
+            history[-1]["effective_indices"] = np.array([m.neff for m in modes])
         if pml_fractions:
             history[-1]["max_mode_pml_fraction"] = max(pml_fractions)
         if info.get("ndofs") is not None:
             history[-1]["ndofs"] = info["ndofs"]
-        if status == "refine":
+        if status == "refine" and stagnating(owner, history):
+            status = "stagnation"
+            history[-1]["status"] = status
+            if components and components[0]:
+                history[-1]["dominant_component"] = max(components[0], key=components[0].get)
+                window, reduction = getattr(owner, "_progress_policy", (3, .01))
+                previous = history[-window-1].get("residual_components", {})
+                history[-1]["stagnating_components"] = [
+                    key for key, value in components[0].items()
+                    if value > 0 and key in previous and value >= previous[key] * (1-reduction)**window
+                ]
+        if absorber is not None:
+            record = history[-1]
+            record["physical_converged"] = converged
             try:
-                update_mesh(indicators)
+                passed = absorber.measure(result, record)
+                record["pml_converged"] = passed
+            except Exception:
+                if last_usable is not None:
+                    restore(last_usable[0])
+                raise
+            if converged and not passed:
+                converged = False
+                status = "pml_refine" if iteration < limit and absorber.remaining else "pml_limit"
+                record["status"] = status
+            if status == "refine":
+                # Changes on a different physical mesh cannot certify the shell.
+                absorber.previous = None
+        if status in ("refine", "pml_refine"):
+            last_usable = owner.__dict__.copy(), result, residual
+            try:
+                update_mesh(indicators, shell=status == "pml_refine")
+                if status == "pml_refine":
+                    absorber.remaining -= 1
             except RefinementLimit as exc:
                 history[-1].update(status=exc.status, message=str(exc))
                 status = exc.status
         report_refinement(owner, iteration, limit, len(indicators), residual, tolerance, status,
                           info.get("ndofs"))
-        if status != "refine":
+        if status not in ("refine", "pml_refine"):
             break
     key = "metadata" if any(field.name == "metadata" for field in fields(result)) else "solve_info"
     updated = replace(result, **{key: {
@@ -184,8 +265,16 @@ def maxwell_jump_residual(basis, fields, material, *, axes, excluded_facets=(),
     return indicators, relative
 
 
+def cached(cache, key, build):
+    if cache is None:
+        return build()
+    if key not in cache:
+        cache[key] = build()
+    return cache[key]
+
+
 def maxwell_residual(basis, fields, cell_material, *, axes, neff, natural=(), excluded_facets=(),
-                          periodic_node_pairs=None, quadrature_order=DEFAULT_QUADRATURE_ORDER):
+                          periodic_node_pairs=None, quadrature_order=DEFAULT_QUADRATURE_ORDER, cache=None):
     """Estimate the Maxwell volume equations and interface and natural-boundary traces.
 
     `fields(basis, material)` returns E and impedance-scaled H, each shaped
@@ -196,22 +285,26 @@ def maxwell_residual(basis, fields, cell_material, *, axes, neff, natural=(), ex
     This estimator is not an algebraic residual or a certified error bound.
     """
     mesh = basis.mesh
-    h, _ = cell_geometry(mesh)
+    h, _ = cached(cache, "geometry", lambda: cell_geometry(mesh))
 
-    coefficients = cell_material(slice(None), *basis.global_coordinates())
+    coefficients = cached(cache, "volume_material", lambda: cell_material(slice(None), *basis.global_coordinates()))
     electric, magnetic = fields(basis, lambda *coords: coefficients)
     eps, _ = coefficients
     dfield = eps * electric
     scale = float(np.sum(basis.dx * (np.sum(abs(dfield)**2, axis=0)
                                      + np.sum(abs(magnetic)**2, axis=0))))
     indicators = np.zeros(mesh.nelements)
-    facets = np.setdiff1d(np.flatnonzero(mesh.f2t[1] >= 0), excluded_facets)
+    facets = cached(cache, "interior", lambda: np.setdiff1d(np.flatnonzero(mesh.f2t[1] >= 0), excluded_facets))
 
     def trace(facet_ids, side):
-        fb = InteriorFacetBasis(mesh, basis.elem, facets=facet_ids, side=side,
-                                dofs=basis.dofs, intorder=quadrature_order)
-        coords = np.asarray(fb.global_coordinates())
-        coefficients = cell_material(fb.tind, *coords)
+        def build():
+            fb = InteriorFacetBasis(mesh, basis.elem, facets=facet_ids, side=side,
+                                    dofs=basis.dofs, intorder=quadrature_order, disable_doflocs=True)
+            return fb, cell_material(fb.tind, *fb.global_coordinates())
+
+        # Preserve batched working memory on large meshes.
+        trace_cache = cache if mesh.nfacets <= 4096 else None
+        fb, coefficients = cached(trace_cache, (side, np.asarray(facet_ids).tobytes()), build)
 
         e, hfield = fields(fb, lambda *unused: coefficients)
         epsilon, _ = coefficients
@@ -233,11 +326,12 @@ def maxwell_residual(basis, fields, cell_material, *, axes, neff, natural=(), ex
         _, d1, h1, _ = trace(selected, 1)
         add_jump(fb, d0 - d1, h0 - h1, *mesh.f2t[:, selected])
     if periodic_node_pairs is not None and len(periodic_node_pairs):
-        seam = periodic_facet_pairs(mesh, periodic_node_pairs)
+        seam = cached(cache, "seam", lambda: periodic_facet_pairs(mesh, periodic_node_pairs))
         if len(seam):
             fa, da, ha, _ = trace(seam[:, 0], 0)
             fb, db, hb, _ = trace(seam[:, 1], 0)
-            order = seam_permutation(fa.global_coordinates(), fb.global_coordinates())[None]
+            order = cached(cache, "permutation", lambda: seam_permutation(
+                fa.global_coordinates(), fb.global_coordinates())[None])
             add_jump(fa, da - np.take_along_axis(db, order, axis=2),
                      ha - np.take_along_axis(hb, order, axis=2), fa.tind, fb.tind)
     if neff is None:

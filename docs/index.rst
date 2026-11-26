@@ -22,6 +22,11 @@ Finite-element electromagnetic solvers with one workflow for every problem type:
    modes.save("microstrip.h5")
    modes.show()  # fields, mesh and material regions
 
+Selecting a field or toggling **Mesh** or **Material** preserves pan and zoom
+in planar plots and the camera pose, zoom and projection in 3D views. Each
+viewer remembers the framing of its planar and rotatable views when switching
+between them. Use **Reset view** at the bottom to fit the current selection.
+
 .. list-table:: Solvers
    :header-rows: 1
    :widths: 35 65
@@ -29,7 +34,7 @@ Finite-element electromagnetic solvers with one workflow for every problem type:
    * - Class
      - Problem
    * - ``fem.ElectrostaticSolver``
-     - Potentials, fields, charges and energies in 1D or 2D
+     - Potentials, fields, charges and energies in 1D, 2D or 3D
    * - ``fem.ModeSolver1D``, ``fem.ModeSolver2D``
      - Guided modes of a z-invariant slab or cross-section
    * - ``fem.PeriodicModeSolver2D``, ``fem.PeriodicModeSolver3D``

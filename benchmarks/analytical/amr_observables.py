@@ -1,0 +1,158 @@
+"""Compare local AMR and a sequence of uniform size targets against analytical observables."""
+
+import argparse
+import csv
+import multiprocessing
+import sys
+from pathlib import Path
+from time import perf_counter
+
+import numpy as np
+from scipy.special import h2vp, hankel2, jv, jvp
+import fem
+
+
+def narrow_gap(h, solve):
+    solver = fem.ElectrostaticSolver(dim=2, x_range=(-.5, .5), y_range=(-.5, .5))
+    circle = fem.shapes.Circle
+    r, outer, offset = .17, .38, .18
+    ring = fem.shapes.Difference(shape=circle(center=(0., 0.), radius=.43),
+                                 tool=circle(center=(0., 0.), radius=outer))
+    solver.set_potential(geometry=ring, potential=0., name="shield")
+    solver.set_potential(geometry=circle(center=(offset, 0.), radius=r), potential=1., name="wire")
+    solver.mesh(max_element_size=h, geometry_tolerance=h**2 / 3)
+    result = solver.solve(**solve)
+    from scipy.constants import epsilon_0
+    capacitance = 2*np.pi*epsilon_0 / np.arccosh((outer**2 + r**2 - offset**2) / (2*outer*r))
+    return result, "capacitance_F_per_m", result.conductor_charge("wire"), capacitance
+
+
+def inclusion(h, solve):
+    radius, index = .14, 3.
+    solver = fem.ScatteringSolver2D(frequency=fem.C_0, x_range=(-1., 1.), y_range=(-1., 1.),
+                                    pml_layers=6, polarization="TM")
+    solver.add_geometry(shape=fem.shapes.Circle(center=(0., 0.), radius=radius),
+                        material=fem.Material(epsilon=index**2))
+    solver.mesh(max_element_size=h)
+    result = solver.solve(**solve)
+    k, n = 2*np.pi, np.arange(-18, 19)
+    x = k*radius
+    alpha = index * jvp(n, index*x) / jv(n, index*x)
+    coeff = -(jvp(n, x) - alpha*jv(n, x)) / (h2vp(n, x) - alpha*hankel2(n, x))
+    angles = np.linspace(0., np.pi, 19)
+    exact = 4/k * abs(np.exp(1j*angles[:, None]*n) @ coeff)**2
+    measured = result.radar_cross_section(np.column_stack((np.cos(angles), np.sin(angles))))
+    return result, "angular_scattering_width_m", measured, exact
+
+
+def periodic_defect(h, solve):
+    period, insert = .2, .04
+    solver = fem.PeriodicModeSolver2D(frequency=fem.C_0, x_range=(0., 1.), z_range=(0., period),
+                                      polarization="TE")
+    solver.add_geometry(shape=fem.shapes.Rectangle(bounds=((0., 1.), (.08, .08+insert))),
+                        material=fem.Material(epsilon=4.))
+    # TE plate mode in each piece. The unit-cell transfer matrix gives cos(beta * period).
+    q, p = np.pi*np.sqrt(3), np.pi*np.sqrt(15)
+    a, b = q*(period-insert), p*insert
+    trace = np.cos(a)*np.cos(b) - .5*(q/p+p/q)*np.sin(a)*np.sin(b)
+    exact = np.arccos(complex(trace)) / (2*np.pi*period)
+    solver.mesh(max_element_size=h)
+    result = solver.solve(num_modes=1, neff_guess=exact, **solve)
+    return result, "bloch_effective_index", result[0].neff, exact
+
+
+def leaky_mode(h, solve):
+    solver = fem.PeriodicModeSolver2D(frequency=fem.C_0, x_range=(0., 1.), z_range=(0., .15),
+                                      polarization="TE")
+    thickness, sigma, order = .1, 3., 3
+    solver.add_pml(thickness=thickness, direction="x", sigma_max=sigma, order=order)
+    separation = 1 - 2j * thickness * sigma / (order+1)
+    exact = np.sqrt(1-(.5/separation)**2)
+    solver.mesh(max_element_size=h, pml_layers=max(1, round(.14/h)))
+    result = solver.solve(num_modes=1, neff_guess=exact, **solve)
+    return result, "complex_effective_index", result[0].neff, exact
+
+
+def multiport(h, solve):
+    solver = fem.AntennaSolver3D(frequency=fem.C_0, x_range=(-1., 1.), y_range=(-.85, .85),
+                                 z_range=(-.95, .95), pml_layers=1)
+    u, v, ends = (-.36, .36), (-.15, .15), (-.275, .275)
+    bore = fem.shapes.Box(bounds=(u, v, ends))
+    outer = fem.shapes.Box(bounds=((-.45, .45), (-.27, .27), (-.37, .37)))
+    solver.add_geometry(shape=fem.shapes.Difference(shape=outer, tool=bore), material=fem.materials.PEC)
+    for name, z in zip(("input", "output"), ends):
+        solver.add_waveguide_port(name=name, axis="z", position=z, num_modes=1,
+                                  cross_section=fem.shapes.Rectangle(bounds=(u, v)))
+    solver.mesh(max_element_size=h, element_order=1)
+    result = solver.solve(**solve)
+    beta = np.sqrt((2*np.pi)**2 - (np.pi/.72)**2)
+    return result, "complex_S21", result.s_parameters[1, 0], np.exp(-1j*beta*.55)
+
+
+CASES = {f.__name__: (f, h) for f, h in
+         [(narrow_gap, .12), (inclusion, .1), (periodic_defect, .16), (leaky_mode, .14), (multiport, .19)]}
+
+
+def peak_rss_mib():
+    if sys.platform != "win32":
+        import resource
+        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return peak / (1024**2 if sys.platform == "darwin" else 1024)
+    import ctypes
+    from ctypes import wintypes
+    class MemoryCounters(ctypes.Structure):
+        _fields_ = [("size", wintypes.DWORD), ("faults", wintypes.DWORD),
+                    ("peak_rss", ctypes.c_size_t), ("other_counters", ctypes.c_size_t * 7)]
+    counters = MemoryCounters()
+    counters.size = ctypes.sizeof(counters)
+    query = ctypes.windll.psapi.GetProcessMemoryInfo
+    query.argtypes = [wintypes.HANDLE, ctypes.POINTER(MemoryCounters), wintypes.DWORD]
+    if not query(wintypes.HANDLE(-1), ctypes.byref(counters), counters.size):
+        raise ctypes.WinError()
+    return counters.peak_rss / 1024**2
+
+
+def measure(case, strategy, level):
+    from fem.adaptivity._budget import field_dofs
+    build, initial_h = CASES[case]
+    h = initial_h / 1.5**level if strategy == "uniform" else initial_h
+    started = perf_counter()
+    result, observable, measured, exact = build(h, dict(
+        backend="cpu", max_refinements=level if strategy == "local" else 0, adaptive_tolerance=1e-10))
+    elapsed = perf_counter() - started
+    history = result.solve_info["adaptive_history"][-1]
+    dofs = history.get("field_dofs")
+    if dofs is None:
+        dofs = field_dofs(result.mesh.mesh, result.mesh.info.element_order)
+    error = float(np.linalg.norm(np.asarray(measured) - exact) / np.linalg.norm(exact))
+    return dict(case=case, strategy=strategy, level=level, observable=observable,
+                relative_error=error, field_dofs=int(dofs), residual=history["residual"],
+                elapsed_s=elapsed, peak_rss_MiB=peak_rss_mib())
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--cases", nargs="+", choices=CASES, default=list(CASES))
+    parser.add_argument("--levels", nargs="+", type=int, default=[0, 1, 2])
+    parser.add_argument("--output", type=Path, default=Path("outputs/benchmarks/analytical/amr_observables.csv"))
+    args = parser.parse_args()
+    if min(args.levels) < 0:
+        parser.error("levels must be nonnegative")
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    # A fresh process makes peak resident memory comparable between runs.
+    with multiprocessing.get_context("spawn").Pool(1, maxtasksperchild=1) as pool, args.output.open("w", newline="") as stream:
+        writer = None
+        for case in args.cases:
+            for level in args.levels:
+                for strategy in (("initial",) if level == 0 else ("local", "uniform")):
+                    row = pool.apply(measure, (case, strategy, level))
+                    if writer is None:
+                        writer = csv.DictWriter(stream, fieldnames=row)
+                        writer.writeheader()
+                    writer.writerow(row)
+                    stream.flush()
+                    print(row, flush=True)
+
+
+if __name__ == "__main__":
+    main()

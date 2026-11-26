@@ -55,6 +55,13 @@ def nodal_size_targets(points, cells, marked, maximum, pairs=()):
     return vertices, target[cells]
 
 
+def refined_size_targets(mesh, factor, pairs=()):
+    """Scale the accepted mesh's local spacings, including both periodic traces."""
+    vertices, sizes = nodal_size_targets(mesh.nodes, mesh.elements, slice(0, 0),
+                                         mesh.info.requested_maximum_edge, pairs)
+    return vertices, sizes / factor
+
+
 def size_view(gmsh, sizes, origin, scale):
     coords, values = sizes
     dim = coords.shape[-1]

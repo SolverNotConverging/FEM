@@ -24,6 +24,7 @@ from typing import Any, Literal
 
 from fem.common.discretization import DEFAULT_QUADRATURE_ORDER
 import numpy as np
+from fem.common._mesh_sizing import refined_size_targets
 from fem.adaptivity._budget import check_candidate
 from fem.common._cell_material import CellMaterial
 from numpy.typing import ArrayLike, NDArray
@@ -644,6 +645,7 @@ class ModeSolver2D(WaveguideScene2D, ModalSolverMixin):
             boundary_refinement_width=settings["boundary_refinement_width"],  # type: ignore[arg-type]
             element_order=int(settings["element_order"]),
             quadrature_order=int(settings["quadrature_order"]),
+            adaptive_sizes=refined_size_targets(self.mesh_data, density_factor),
             geometry_tolerance=settings["geometry_tolerance"],
             refinement_scale=float(settings["refinement_scale"]) / density_factor,
         )

@@ -46,6 +46,9 @@ def derivative_operators(basis):
     differentiates FE polynomials exactly up to the reconstruction degree.
     Stretched coefficients in PMLs use the same local reconstruction.
     """
+    cached = getattr(basis, "_fem_derivative_operators", None)
+    if cached is not None:
+        return cached
     x = basis.X
     dim, count = x.shape
     terms, inverse = polynomial_fit(x)
@@ -58,7 +61,8 @@ def derivative_operators(basis):
                     slopes[:, j] += np.prod(x[list(term[:i] + term[i+1:])], axis=0)
         matrices.append(slopes @ inverse)
     jac = basis.mapping.invDF(x[:, :1], tind=basis.tind)[..., 0]
-    return np.asarray(matrices), jac
+    basis._fem_derivative_operators = np.asarray(matrices), jac
+    return basis._fem_derivative_operators
 
 
 def partial(field, axis, operators):

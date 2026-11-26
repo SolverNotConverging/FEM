@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 from fem.common.discretization import DEFAULT_QUADRATURE_ORDER, field_orders
 import numpy as np
+from fem.common._mesh_sizing import refined_size_targets
 from fem.adaptivity._budget import check_candidate
 from fem.common._cell_material import CellMaterial
 from numpy.typing import ArrayLike, NDArray
@@ -186,6 +187,7 @@ class PeriodicModeSolver3D(PeriodicScene3D, ModalSolverMixin):
         self,
         *,
         adaptive_sizes=None,
+        geometry_tolerance: float | None = None,
         max_element_size: float | None = None,
         wavelength_elements: int = 4,
         material_aware: bool = True,
@@ -194,6 +196,7 @@ class PeriodicModeSolver3D(PeriodicScene3D, ModalSolverMixin):
     ) -> PeriodicMesh3D:
         element_order, quadrature_order = field_orders(element_order, quadrature_order, (1, 2))
         options = {
+            "geometry_tolerance": geometry_tolerance,
             "max_element_size": max_element_size,
             "wavelength_elements": wavelength_elements,
             "material_aware": material_aware,
@@ -203,6 +206,7 @@ class PeriodicModeSolver3D(PeriodicScene3D, ModalSolverMixin):
         mesh_data = discretize_3d(
             self.geometry,
             adaptive_sizes=adaptive_sizes,
+            geometry_tolerance=geometry_tolerance,
             max_element_size=max_element_size,
             wavelength_elements=wavelength_elements,
             material_aware=material_aware,
@@ -242,10 +246,12 @@ class PeriodicModeSolver3D(PeriodicScene3D, ModalSolverMixin):
             raise ConfigurationError("factor must be greater than one.")
         if self._discretize_options is None:
             raise NotDiscretizedError("discretize() must be called before refine().")
+        self._require_system()
+        sizes = refined_size_targets(self.mesh_data, selected, self.mesh_data.periodic_node_pairs)
         previous_scale = self._refinement_scale
         self._refinement_scale /= selected
         try:
-            return self._mesh_impl(**self._discretize_options)
+            return self._mesh_impl(**self._discretize_options, adaptive_sizes=sizes)
         except Exception:
             self._refinement_scale = previous_scale
             raise
@@ -633,9 +639,9 @@ class PeriodicModeSolver3D(PeriodicScene3D, ModalSolverMixin):
     def result(self):
         return self._result
 
-    def mesh(self, *, max_element_size: float | None=None, wavelength_elements: int=4, material_aware: bool=True, element_order: int=2, quadrature_order: int=DEFAULT_QUADRATURE_ORDER):
+    def mesh(self, *, geometry_tolerance: float | None=None, max_element_size: float | None=None, wavelength_elements: int=4, material_aware: bool=True, element_order: int=2, quadrature_order: int=DEFAULT_QUADRATURE_ORDER):
         """Build the initial mesh; solve() may subsequently refine it."""
-        settings = {'max_element_size': max_element_size, 'wavelength_elements': wavelength_elements, 'material_aware': material_aware, 'element_order': element_order, 'quadrature_order': quadrature_order}
+        settings = {'geometry_tolerance': geometry_tolerance, 'max_element_size': max_element_size, 'wavelength_elements': wavelength_elements, 'material_aware': material_aware, 'element_order': element_order, 'quadrature_order': quadrature_order}
         mesh = self._mesh_impl(**settings)
         self._mesh_settings = settings
         self._result = None

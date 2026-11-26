@@ -25,6 +25,7 @@ def solve_periodic(solver, dimension, args, options, max_refinements, adaptive_t
         if solver.geometry.pmls:
             centers = solver.mesh_data.nodes[solver.mesh_data.elements].mean(axis=1)
             pml_cells = solver.geometry.pml_mask(*centers[:, :dimension-1].T)
+        caches = {}
         for mode in result:
             system = solver._systems[mode.polarization] if dimension == 2 else solver.system
             magnetic_primary = dimension == 2 and system.polarization == "TM"
@@ -55,6 +56,7 @@ def solve_periodic(solver, dimension, args, options, max_refinements, adaptive_t
             indicator, residual, components = maxwell_residual(
                 system.basis, fields, estimator_material, axes=(0, 2) if dimension == 2 else (0, 1, 2),
                 neff=mode.neff, natural=natural, quadrature_order=system.quadrature_order,
+                cache=caches.setdefault(id(system), {}) if len(result) > 1 else None,
                 periodic_node_pairs=(np.column_stack((solver.mesh_data.slave_nodes, solver.mesh_data.master_nodes))
                                      if dimension == 2 else solver.mesh_data.periodic_node_pairs),
             )
@@ -86,4 +88,4 @@ def solve_periodic(solver, dimension, args, options, max_refinements, adaptive_t
                         refine,
                         max_refinements=max_refinements, adaptive_tolerance=adaptive_tolerance,
                         max_elements=max_elements, max_dofs=max_dofs,
-                        error_type=ConfigurationError, retry_errors=(SolverError,))
+                        error_type=ConfigurationError, retry_errors=(SolverError,), periodic=True)

@@ -10,6 +10,15 @@ python benchmarks/analytical/uniform_periodic_medium.py --check
 python benchmarks/analytical/short_dipole.py --check
 ```
 
+Compare local AMR and uniform sizing for an eccentric conductor gap, a dielectric
+cylinder, a periodic dielectric insert, a mode in a stretched guide, and a two-port
+guide. Each run records relative observable error against its analytical solution,
+field DOFs, elapsed mesh-and-solve time, and peak process resident memory in MiB.
+
+```sh
+python benchmarks/analytical/amr_observables.py --levels 0 1 2
+```
+
 Reports are written to ignored `outputs/benchmarks/analytical/`.
 
 The short-dipole benchmark compares directivity in two orthogonal cuts of

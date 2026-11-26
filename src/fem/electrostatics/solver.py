@@ -360,7 +360,10 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
         """
         from fem.common.linalg import resolve_backend
         backend = resolve_backend(backend)
-        from fem.adaptivity.policy import mesh_quality
+        from fem.adaptivity.policy import mesh_quality, stagnating
+        from fem.adaptivity.remeshing import adapt_candidate
+        from fem.common._mesh_sizing import nodal_size_targets
+        from fem.adaptivity._budget import RefinementLimit, check_mesh_policy
         from .adaptive import flux_indicators, refine_marked
 
         for value, name, minimum in (
@@ -398,6 +401,7 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
             if not np.isfinite(error):
                 raise SolverError("The adaptive flux indicator is non-finite.")
             record = {"elements": len(result.elements), "relative_indicator": error, "residual": error,
+                      "energy": result.energy, "conductor_charges": dict(result.conductor_charges),
                       "marked_elements": 0, "status": "refined", **mesh_quality(result.mesh.mesh)}
             history.append(record)
             if error <= adaptive_tolerance:
@@ -406,6 +410,9 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
             if step == max_refinements:
                 record["status"] = "refinement_limit"
                 break
+            if stagnating(self, history):
+                record["status"] = "stagnation"
+                break
             if len(result.elements) >= max_elements:
                 record["status"] = "element_limit"
                 break
@@ -413,19 +420,28 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
             count = int(np.searchsorted(np.cumsum(indicators[ranked]),
                                        marking_fraction * indicators.sum())) + 1
             marked = ranked[:count]
-            if self.dim == 3 or result.mesh.has_curves:
-                from fem.common._mesh_sizing import nodal_size_targets
+            if self.dim > 1:
                 sizes = nodal_size_targets(result.coordinates, result.elements, marked,
                                            result.mesh.info.requested_maximum_edge)
                 settings = self._discretization_settings.copy()
                 order = settings.pop("element_order")
                 settings.pop("quadrature_order")
-                candidate = discretize_simplices(self.geometry, adaptive_sizes=sizes, **settings)
-                candidate = replace(candidate, info=replace(candidate.info, element_order=order))
-            else:
-                candidate = refine_marked(result.mesh, marked)
-            if len(candidate.elements) > max_elements:
-                record["status"] = "element_limit"
+
+            def make_candidate():
+                if self.dim == 1:
+                    candidate = refine_marked(result.mesh, marked)
+                else:
+                    candidate = discretize_simplices(self.geometry, adaptive_sizes=sizes, **settings)
+                    candidate = replace(candidate, info=replace(candidate.info, element_order=order))
+                if len(candidate.elements) > max_elements:
+                    raise RefinementLimit("element_limit", f"Candidate exceeds the {max_elements} element budget.")
+                check_mesh_policy(self, candidate.mesh, len(result.elements))
+                return candidate
+
+            try:
+                candidate = adapt_candidate(self, self.dim, indicators, make_candidate, record)
+            except RefinementLimit as exc:
+                record.update(status=exc.status, message=str(exc))
                 break
             record["marked_elements"] = len(marked)
             report_refinement(self, step, max_refinements, len(result.elements), error,

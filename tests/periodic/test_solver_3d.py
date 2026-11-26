@@ -48,7 +48,7 @@ def test_default_3d_te10_carries_one_watt_through_transverse_face():
 
 def test_refinement_failure_rolls_back_density(monkeypatch):
     solver = PeriodicModeSolver3D(frequency=FREQUENCY, x_range=WIDTH, y_range=HEIGHT, z_range=PERIOD)
-    solver._discretize_options = {"max_element_size": 0.006}
+    original = solver.mesh(max_element_size=0.006, element_order=1)
 
     def fail(**kwargs):
         raise RuntimeError("simulated mesh failure")
@@ -57,6 +57,7 @@ def test_refinement_failure_rolls_back_density(monkeypatch):
     with pytest.raises(RuntimeError, match="simulated mesh"):
         solver.refine()
     assert solver._refinement_scale == 1.0
+    assert solver.mesh_data is original
 
 
 def test_geometry_changes_clear_all_modal_arrays():

@@ -261,3 +261,92 @@ def test_periodic_3d_transverse_arrows_zero_z(monkeypatch, component):
     np.testing.assert_allclose(components[1], fields.component(f'{component[0]}y'))
     np.testing.assert_array_equal(components[2], 0)
     assert captured[0][1]['label'] == f'|{component}|'
+
+
+@pytest.mark.parametrize("component", ["Et", "E vector"])
+def test_mesh_and_material_preserve_view(component):
+    viewer = ResultViewer(_ring_modes())
+    try:
+        viewer._component.setCurrentText(component)
+        viewer.show(block=False)
+        viewer._app.processEvents()
+        if component == "Et":
+            limits = ((-.75, .25), (.8, .4))
+            axes = viewer._canvas.figure.axes[0]
+            axes.set(xlim=limits[0], ylim=limits[1])
+            viewer._canvas.draw()
+            center_pixel = axes.transData.transform((-.25, .6))
+        else:
+            camera = viewer._plotter.camera
+            camera.position = (2., 4., 5.)
+            camera.focal_point = (.3, -.4, .7)
+            camera.up = (0., 1., 0.)
+            camera.parallel_projection = True
+            camera.parallel_scale = .56
+            camera.view_angle = 22.
+            camera.clipping_range = (.1, 40.)
+            def camera_state(cam):
+                return (*cam.position, *cam.focal_point, *cam.up, cam.parallel_projection,
+                        cam.parallel_scale, cam.view_angle, *cam.clipping_range)
+            initial = camera_state(camera)
+        replacement = "Ht" if component == "Et" else "H vector"
+        plotter = viewer._plotter
+        for action in (lambda: viewer._component.setCurrentText(replacement),
+                       lambda: viewer._quantity.setCurrentText("imag"),
+                       viewer._mesh.click, viewer._material.click, viewer._mesh.click,
+                       viewer._material.click):
+            action()
+            viewer._app.processEvents()
+            assert viewer._status.currentMessage() == ""
+            if component == "Et":
+                ax = viewer._canvas.figure.axes[0]
+                np.testing.assert_allclose((ax.get_xlim(), ax.get_ylim()), limits)
+                viewer._canvas.draw()
+                np.testing.assert_allclose(ax.transData.transform((-.25, .6)), center_pixel, atol=1.)
+            else:
+                assert viewer._plotter is plotter
+                np.testing.assert_allclose(camera_state(viewer._plotter.camera), initial)
+        viewer._component.setCurrentText("Ex" if component != "Et" else "E vector")
+        if component == "Et":
+            assert viewer._plotter.camera.parallel_projection
+            np.testing.assert_allclose(viewer._plotter.camera.focal_point, [-.25, .6, 0.])
+        viewer._component.setCurrentText(replacement)
+        viewer._app.processEvents()
+        if component == "Et":
+            ax = viewer._canvas.figure.axes[0]
+            np.testing.assert_allclose((ax.get_xlim(), ax.get_ylim()), limits)
+        else:
+            np.testing.assert_allclose(camera_state(viewer._plotter.camera), initial)
+        viewer._reset_view.click()
+        viewer._app.processEvents()
+        assert viewer._component.currentText() == replacement
+        if component == "Et":
+            ax = viewer._canvas.figure.axes[0]
+            assert not np.allclose((ax.get_xlim(), ax.get_ylim()), limits)
+        else:
+            assert not np.allclose(camera_state(viewer._plotter.camera), initial)
+    finally:
+        viewer._clear_body()
+        viewer._window.close()
+
+
+def test_planar_scalar_material_toggle_keeps_zoomed_geometry_in_place():
+    viewer = ResultViewer(_ring_modes())
+    try:
+        viewer._component.setCurrentText("Ex")
+        viewer.show(block=False)
+        viewer._app.processEvents()
+        axes = viewer._canvas.figure.axes[0]
+        axes.set(xlim=(.3, 1.6), ylim=(-.7, .85))
+        viewer._canvas.draw()
+        coordinates = [(1.3, .6), (.6, -.4)]
+        pixels = axes.transData.transform(coordinates)
+        for _ in range(2):
+            viewer._material.click()
+            viewer._app.processEvents()
+            viewer._canvas.draw()
+            np.testing.assert_allclose(
+                viewer._canvas.figure.axes[0].transData.transform(coordinates), pixels, atol=1.)
+    finally:
+        viewer._clear_body()
+        viewer._window.close()

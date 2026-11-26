@@ -155,7 +155,7 @@ class RadiationBoxSolver(ElectromagneticSolverMixin):
             raise GeometryError("The physical interface of the PML must be in vacuum.")
         profiles = self._pml_profiles
         mesh = extend_box(physical, self._physical_ranges(profiles), profiles, self._pml_layers)
-        check_candidate(self, mesh, element_order)
+        check_candidate(self, mesh, element_order, physical=physical)
         self._faces = {}
         for owner, facets in faces.items():
             if owner:
@@ -165,6 +165,7 @@ class RadiationBoxSolver(ElectromagneticSolverMixin):
         boundary = mesh.boundary_facets()
         metals = np.concatenate(list(self._faces.values())) if self._faces else []
         self._pml_wall = np.setdiff1d(boundary, metals)
+        self._physical_domain = physical, snapshot, faces
         self._mesh = mesh
         self._mesh_orders = dict(element_order=element_order, quadrature_order=quadrature_order)
         widths = {side: profile.thickness for side, profile in profiles.items()}
@@ -187,7 +188,12 @@ class RadiationBoxSolver(ElectromagneticSolverMixin):
     @staticmethod
     def _wavelength_size(wavelength, order):
         # Quadratic elements resolve propagation with fewer cells per wavelength.
-        return wavelength / (6 if order == 2 else 10)
+        return wavelength / (4 if order == 2 else 10)
+
+    def _refine_absorber(self):
+        self._pml_layers *= 2
+        self._attach_pml(*self._physical_domain, **self._mesh_orders)
+        self.result = None
 
     def _refine_driven(self, indicators):
         snapshot = self.mesh_data
@@ -306,6 +312,9 @@ def build_mesh(ranges, regions, size, *, interior_box=None, port_gaps=None, refi
                     *(limits[:, 0] - padding), *(limits[:, 1] + padding), dim=0)
                 gmsh.model.mesh.setSize(points, min(size * scale, np.min(np.diff(limits)) / 2))
             gmsh.model.mesh.generate(dim)
+            if adaptive_sizes is not None:
+                from fem.adaptivity.remeshing import adapt_cad_interiors
+                adapt_cad_interiors(gmsh, dim, adaptive_sizes, origin, scale)
             tags, xyz, _ = gmsh.model.mesh.getNodes()
             order = np.argsort(tags)
             cells, labels, metal_faces = [], [], {}

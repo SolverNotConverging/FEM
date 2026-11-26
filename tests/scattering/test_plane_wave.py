@@ -20,7 +20,8 @@ def test_vacuum_monitor_placement_and_reconfiguration(solver_type):
     solver.add_geometry(shape=target, material=fem.Material(epsilon=2.))
     # The implicit absorber uses the same automatic thickness as add_pml().
     solver.add_nf2ff("auto")
-    mesh = solver.mesh(max_element_size=.35)
+    mesh = solver.mesh()
+    assert mesh.info["size"] == pytest.approx(solver.wavelength / 4)
     np.testing.assert_allclose(np.reshape(mesh.info["nf2ff_bounds"], (-1, 2)), [[.2, 1.7]] * dim)
     with pytest.raises(fem.GeometryError, match="vacuum"):
         solver.add_nf2ff(distance=.4)
@@ -32,6 +33,7 @@ def test_vacuum_monitor_placement_and_reconfiguration(solver_type):
         solver.add_geometry(shape=shape(bounds=[(.05, .11)] * dim), material=fem.materials.PEC)
     solver.add_pml(thickness=.24)
     mesh = solver.mesh(max_element_size=.35)
+    assert mesh.info["size"] == pytest.approx(.35)
     np.testing.assert_allclose(np.reshape(mesh.info["nf2ff_bounds"], (-1, 2)),
                                [[extent[0] + .34, extent[1] - .34]] * dim)
     np.testing.assert_allclose(solver._mesh.p.min(axis=1), extent[0])
@@ -139,6 +141,7 @@ def test_adaptive_dielectric_mesh_budget_and_orders():
     result = solver.solve(backend="cpu", max_refinements=2, adaptive_tolerance=1e-8)
     history = result.solve_info["adaptive_history"]
     assert [step["status"] for step in history] == ["refine", "refine", "refinement_limit"]
+    assert all(row["refinement_backend"] == "mmg2d" for row in history[:-1])
     assert history[-1]["elements"] > history[0]["elements"]
     assert history[-1]["residual"] < history[0]["residual"]
     assert result.mesh_data.info["quadrature_order"] == 6
@@ -301,7 +304,9 @@ def test_shared_viewer_switches_fields_and_rcs(dim, polarization, tmp_path):
                     label = "|Js| (A/m)" if component == "Surface current" else "|E| (V/m)"
                     if component.endswith(" H"):
                         label = "|H| (A/m)"
-                    assert any(label in data.point_data for data in datasets)
+                    assert any(label in data.point_data for data in datasets), (
+                        component, label, [data.array_names for data in datasets]
+                    )
             elif component.endswith(" vector"):
                 label = "|H| (A/m)" if " H " in component else "|E| (V/m)"
                 assert label in viewer._plotter.scalar_bars
@@ -313,3 +318,48 @@ def test_shared_viewer_switches_fields_and_rcs(dim, polarization, tmp_path):
     finally:
         viewer._clear_body()
         viewer._window.close()
+
+
+def test_shell_convergence_against_cylinder_rcs(tmp_path):
+    solver = fem.ScatteringSolver2D(frequency=fem.C_0, x_range=(-1, 1), y_range=(-1, 1), pml_layers=1)
+    solver.add_geometry(shape=fem.shapes.Circle(center=(0, 0), radius=.18), material=fem.Material(epsilon=2.25))
+    solver.mesh(max_element_size=.08)
+    angles = np.linspace(0., np.pi, 19)
+    directions = np.column_stack((np.cos(angles), np.sin(angles)))
+    def observable(result):
+        return result.radar_cross_section(directions)
+    result = solver.solve(backend="cpu", adaptive_tolerance=.015, pml_tolerance=.005,
+                          pml_observable=observable, max_refinements=7)
+    history = result.solve_info["adaptive_history"]
+    first = next(i for i, row in enumerate(history) if row["physical_converged"])
+    comparisons = history[first:]
+    assert len(comparisons) >= 3
+    assert len({r["elements"] for r in comparisons}) == 1
+    assert [r["pml_layers"] for r in comparisons] == [2**i for i in range(len(comparisons))]
+    assert comparisons[0]["status"] == "pml_refine"
+    assert comparisons[-1]["pml_status"] == "tolerance"
+    assert all(r["pml_interface_residual"] > 0 and r["pml_residual"] > 0 for r in comparisons)
+    k, n = 2*np.pi, np.arange(-14, 15)
+    x = k * .18
+    alpha = 1.5 * jvp(n, 1.5*x) / jv(n, 1.5*x)
+    coefficients = -(jvp(n, x) - alpha*jv(n, x)) / (h2vp(n, x) - alpha*hankel2(n, x))
+    exact = 4/k * abs(np.exp(1j*angles[:, None]*n) @ coefficients)**2
+    errors = [np.linalg.norm(r["observable_values"] - exact) / np.linalg.norm(exact) for r in comparisons]
+    assert errors[-1] < .01 and errors[-1] < errors[0] / 3
+    loaded = fem.load(result.save(tmp_path / "pml.h5"))
+    np.testing.assert_allclose(loaded.solve_info["adaptive_history"][-1]["observable_values"], observable(result))
+
+
+def test_shell_budget_returns_the_usable_physical_solution():
+    solver = fem.ScatteringSolver2D(frequency=fem.C_0, x_range=(-1, 1), y_range=(-1, 1), pml_layers=1)
+    solver.add_geometry(shape=fem.shapes.Circle(center=(0, 0), radius=.18), material=fem.Material(epsilon=2.25))
+    solver.mesh(max_element_size=.16)
+    original = solver._mesh
+    for options, reason in ((dict(max_pml_refinements=0), "pml_limit"),
+                            (dict(max_elements=original.nelements), "element_limit")):
+        result = solver.solve(backend="cpu", adaptive_tolerance=1., max_refinements=2, **options)
+        record = result.solve_info["adaptive_history"][-1]
+        assert record["status"] == reason and record["physical_converged"]
+        assert not result.solve_info["adaptive_converged"]
+        assert solver._mesh is original and solver._pml_layers == 1
+        assert result is solver.result

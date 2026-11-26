@@ -9,7 +9,7 @@ from fem.common.contracts import bounds
 from fem.common.constants import ETA_0
 from fem.common.discretization import DEFAULT_QUADRATURE_ORDER, field_orders
 from fem.adaptivity import run_adaptive
-from fem.adaptivity.driven import driven_residual
+from fem.adaptivity.driven import AbsorberCheck, driven_residual
 from fem.common.errors import ConfigurationError, GeometryError, SolverError
 from fem.common.linalg import resolve_backend
 from fem.common.materials import bulk_values
@@ -116,12 +116,16 @@ class _PlaneWaveSolver(RadiationBoxSolver):
         self._size, self.result = size, None
         return self.mesh_data
 
-    def solve(self, *, backend="auto", max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None):
-        """Adapt the physical mesh using the relative volume, interface and boundary residual."""
+    def solve(self, *, backend="auto", max_refinements=2, adaptive_tolerance=0.05,
+              max_elements=None, max_dofs=None, pml_tolerance=None, pml_observable=None,
+              max_pml_refinements=3):
+        """Refine the physical mesh by residual and the PML by observable change."""
         selected = resolve_backend(backend)
+        absorber = AbsorberCheck(adaptive_tolerance if pml_tolerance is None else pml_tolerance,
+                                 pml_observable, max_pml_refinements)
         return run_adaptive(self, lambda: self._solve_once(selected), lambda result: self._estimate,
                             self._refine_driven, max_refinements=max_refinements, max_elements=max_elements, max_dofs=max_dofs,
-                            adaptive_tolerance=adaptive_tolerance, error_type=ConfigurationError)
+                            adaptive_tolerance=adaptive_tolerance, error_type=ConfigurationError, absorber=absorber)
 
     def _solve_once(self, selected):
         if self._mesh is None:
@@ -238,7 +242,8 @@ class _PlaneWaveSolver(RadiationBoxSolver):
             raise SolverError("The plane-wave linear solve returned nonfinite coefficients.")
 
         self._estimate = driven_residual(basis, coeff, b.ravel(), a.ravel(), k, quadrature,
-                                         incident, incident_derivative, walls=natural_walls)
+                                         incident, incident_derivative, walls=natural_walls,
+                                         absorber=(self._physical_ranges(self._pml_profiles), self._pml_profiles))
         positions, current, moment = _monitor_sources(basis, self._surface, coeff, k, quadrature)
         incident_transverse = scattered_transverse = None
         scattered_h = None

@@ -6,13 +6,14 @@ import pytest
 import fem
 
 
-def guide(*, open_end=False, higher_mode=False, wall=fem.materials.PEC, **mesh_options):
+def guide(*, open_end=False, higher_mode=False, wall=fem.materials.PEC, pml_layers=5, **mesh_options):
     u, v = (-0.36, 0.36), (-0.15, 0.15)
     s = fem.AntennaSolver3D(
         frequency=(1.6 if higher_mode else 1) * fem.C_0,
         x_range=(-1.0, 1.0),
         y_range=(-0.85, 0.85),
         z_range=(-0.95, 0.95),
+        pml_layers=pml_layers,
     )
     outer = fem.shapes.Box(bounds=((-0.45, 0.45), (-0.27, 0.27), (-0.37, 0.37)))
     bore = fem.shapes.Box(bounds=(u, v, (-0.275, 0.42 if open_end else 0.275)))
@@ -48,6 +49,7 @@ def test_two_port_guide_s_and_coherent_excitation(tmp_path, monkeypatch):
     assert [(f, estimate) for f, _, estimate in solves] == [(high, True), (high, True), (low, False)]
     assert solves[1][1] is solves[2][1]
     assert sweep[0].mesh_data is sweep[1].mesh_data
+    assert sweep[1].solve_info["adaptive_history"][0]["refinement_backend"] == "mmg3d"
     assert sweep[1].solve_info["adaptive_history"][-1]["status"] == "refinement_limit"
     assert "adaptive_history" not in sweep[0].solve_info
     assert sweep.s_parameters.shape == (2, 2, 2)
@@ -110,6 +112,20 @@ def test_radiating_guide_nf2ff():
     np.testing.assert_allclose(scaled.realized_gain, pattern.realized_gain)
 
 
+def test_open_guide_checks_s_matrix_on_fixed_physical_mesh():
+    solver = guide(open_end=True, pml_layers=1, element_order=1, max_element_size=.18)
+    result = solver.solve(backend="cpu", adaptive_tolerance=10., pml_tolerance=.5, max_refinements=1)
+    first, final = result.solve_info["adaptive_history"]
+    assert first["status"] == "pml_refine"
+    assert [first["pml_layers"], final["pml_layers"]] == [1, 2]
+    assert first["elements"] == final["elements"] and final["mesh_elements"] > first["mesh_elements"]
+    assert final["pml_observable"] == "S" and final["pml_interface_residual"] > 0
+    np.testing.assert_array_equal(final["observable_values"], result.s_parameters)
+    change = np.linalg.norm(final["observable_values"] - first["observable_values"])
+    norm = max(np.linalg.norm(row["observable_values"]) for row in (first, final))
+    assert final["pml_observable_change"] == pytest.approx(change / norm)
+
+
 def test_selected_mode_must_propagate():
     with pytest.raises(fem.ConfigurationError, match="below cutoff"):
         guide().sweep(frequencies=[0.4 * fem.C_0], backend="cpu")
@@ -128,8 +144,16 @@ def test_viewer_inspects_port_modes_and_animates_vectors():
         assert "neff" in port._info.text()
         port._window.close()
         assert view._component.findText("Total H") == view._component.findText("Total E") + 1
+        pose = lens = None
         for component in ("Total E", "Total H", "Surface current"):
             view._component.setCurrentText(component)
+            if pose is not None:
+                view._mesh.click()
+                view._material.click()
+                view._app.processEvents()
+                current = view._plotter.camera
+                np.testing.assert_allclose((current.position, current.focal_point, current.up), pose)
+                np.testing.assert_allclose((current.view_angle, current.parallel_scale, *current.clipping_range), lens)
             assert not view._status.currentMessage()
             view._phase.setValue(0)
             actor = view._plotter.actors["antenna_vectors"]

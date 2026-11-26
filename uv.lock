@@ -387,6 +387,7 @@ dependencies = [
     { name = "h5py" },
     { name = "matplotlib" },
     { name = "meshio" },
+    { name = "mmgpy" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'extra-20-electromagnetics-fem-cuda12' and extra == 'extra-20-electromagnetics-fem-cuda13')" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' or (extra == 'extra-20-electromagnetics-fem-cuda12' and extra == 'extra-20-electromagnetics-fem-cuda13')" },
     { name = "pyside6" },
@@ -436,6 +437,7 @@ requires-dist = [
     { name = "h5py", specifier = ">=3.15,<4" },
     { name = "matplotlib", specifier = ">=3.8,<4" },
     { name = "meshio", specifier = ">=5.3,<6" },
+    { name = "mmgpy", specifier = ">=0.18,<0.19" },
     { name = "numpy", specifier = ">=1.26,<3" },
     { name = "nvidia-cudss-cu12", marker = "extra == 'cuda12'", specifier = ">=0.8,<0.9" },
     { name = "nvidia-cudss-cu13", marker = "extra == 'cuda13'", specifier = ">=0.8,<0.9" },
@@ -799,6 +801,34 @@ wheels = [
 ]
 
 [[package]]
+name = "mmgpy"
+version = "0.18.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'extra-20-electromagnetics-fem-cuda12' and extra == 'extra-20-electromagnetics-fem-cuda13')" },
+    { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' or (extra == 'extra-20-electromagnetics-fem-cuda12' and extra == 'extra-20-electromagnetics-fem-cuda13')" },
+    { name = "patchelf", marker = "sys_platform == 'linux' or (extra == 'extra-20-electromagnetics-fem-cuda12' and extra == 'extra-20-electromagnetics-fem-cuda13')" },
+    { name = "rich" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'extra-20-electromagnetics-fem-cuda12' and extra == 'extra-20-electromagnetics-fem-cuda13')" },
+    { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' or (extra == 'extra-20-electromagnetics-fem-cuda12' and extra == 'extra-20-electromagnetics-fem-cuda13')" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/69/ae/aa6f9c69f53b43b34779991c9d9b9fa0d371d6e1c7c3745b18187920b1b9/mmgpy-0.18.0.tar.gz", hash = "sha256:f9db793262fee741681d8bdda224371638ee3db26aeedfa8465f06e60b15e68b", size = 19656322, upload-time = "2026-11-02T15:49:56.759Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/38/2a/b7a90e7268e8c24e48a9147324a4546d8e07868c12f455cde403f2c14225/mmgpy-0.18.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:f06699684af8dfd6d06554652a7c8c925ba0161664861f2b70df9784b2bde588", size = 7740874, upload-time = "2026-11-02T15:49:22.771Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/15/04992df17bee49224c118f6e2d4c55e27a8481680db48d16b0863da8e70b/mmgpy-0.18.0-cp311-cp311-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:b6558b8f6ff9e910812762be675e32f653b39049db776c167ecb90c065edb457", size = 9522512, upload-time = "2026-11-02T15:49:24.459Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/56/4859e10d54c660277bdbaf1dff9878472485ab7ef59b49c61531cbeed977/mmgpy-0.18.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:38e75ed784e4661942afb3f40f2dd7e25fb876bcd8e39ed91f76fe2e67b81ae5", size = 9756920, upload-time = "2026-11-02T15:49:26.733Z" },
+    { url = "https://files.pythonhosted.org/packages/15/a9/60182abc944ef97d00118c96c9d068cb27a8bb24eba79f209e10d7cc6b12/mmgpy-0.18.0-cp311-cp311-win_amd64.whl", hash = "sha256:65b9ce76c2445a3a68945a8c845b233b388abcd4629300ed64c9c1d5fecba067", size = 4852328, upload-time = "2026-11-02T15:49:28.696Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/d3/676019e5efb3c9cd716081338ef86878f236ca0464ff9f9335291a2d94bd/mmgpy-0.18.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:c1bb30160adc88487eaa752a9d4932758d3be43e17f2ef616f50c581c9d37cc7", size = 7742095, upload-time = "2026-11-02T15:49:30.12Z" },
+    { url = "https://files.pythonhosted.org/packages/c8/9a/9421bb03bbfcca9072bc41b01306f4aee8fe48d06beaf9f592f50a8ebd49/mmgpy-0.18.0-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:12af3808271582e1f86f77f9634bff37a8e0e10099997288fa53ef777118762f", size = 9525027, upload-time = "2026-11-02T15:49:32.564Z" },
+    { url = "https://files.pythonhosted.org/packages/af/b0/b18cf902f98d584c2d701ff675f751b29174c896ab670cdecc693be6d48d/mmgpy-0.18.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b7673f5c80a258815f701dcc3c13c76022dfacff690f650ffc04ed33bdd021bb", size = 9757456, upload-time = "2026-11-02T15:49:34.467Z" },
+    { url = "https://files.pythonhosted.org/packages/fb/19/037f1be4961500117a31c400f6c68d8a2b91e66d1120bbb6cfcfcdc6b045/mmgpy-0.18.0-cp312-cp312-win_amd64.whl", hash = "sha256:de2196864dabdc331367ec82531d3bc0dd032e66cbf488e0761fe974c08e9005", size = 4854969, upload-time = "2026-11-02T15:49:36.491Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/31/8fdbfcaceff0d67c4955b6b84117b92f969d6289221beceb4bd955cf8382/mmgpy-0.18.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:466044e7b3ff3a62b30fe22da15cf8408f4e54d2096d290736e0ab281cf91a18", size = 7742094, upload-time = "2026-11-02T15:49:38.179Z" },
+    { url = "https://files.pythonhosted.org/packages/0d/1d/6882a40a569fb44cdf09fa4ca7c6ef824564bfeafd5c1efc064bdc407b54/mmgpy-0.18.0-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:50a4d92f8682f12e15de7e5806a40ea2c4aa680b665b3c1785f33b3da9a8fa75", size = 9525018, upload-time = "2026-11-02T15:49:39.776Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/fa/92bf13b230e479f89818ad8cbc9ff4f48e90f2bb0f40af9eeca7230b3619/mmgpy-0.18.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:93723205163c49c6e059231793aadf31284d7c0b2074ccc668f6c78fed2b9cb3", size = 9757204, upload-time = "2026-11-02T15:49:41.808Z" },
+    { url = "https://files.pythonhosted.org/packages/26/7b/6433950e3f64f99bfca367c6348bad6f4c3c1b9ab7460cc7e68c8e6130b6/mmgpy-0.18.0-cp313-cp313-win_amd64.whl", hash = "sha256:9cc0419c0f35602007c09be0d8c8bfeb6ace32da8fdf2abe31f522cf43e4aa27", size = 4855029, upload-time = "2026-11-02T15:49:43.719Z" },
+]
+
+[[package]]
 name = "myst-parser"
 version = "5.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1037,6 +1067,22 @@ wheels = [
 ]
 
 [[package]]
+name = "patchelf"
+version = "0.19.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7c/99/1f5174c64fc0ed2e6e7da7ef59ae4d36ec694256ef93aa2c08231cbe1dbc/patchelf-0.19.3.0.tar.gz", hash = "sha256:568ede62875dc8e30ee0eb2920da5d39e6aebb43216c48d7362f80384217fee8", size = 380620, upload-time = "2026-11-03T21:33:41.549Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c3/6d/336e4a458bcd9465e185ad3c78d517af50a6d493561d636603571920cae7/patchelf-0.19.3.0-py3-none-macosx_10_9_universal2.whl", hash = "sha256:2629e5caaba09fae3b577603c1729e56fe191382a8563dfa916b40167ca63045", size = 262614, upload-time = "2026-11-03T21:33:27.489Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/2b/2f9b75533ca180796dd92cdae4e141cec625afcde980f6e28f1f81dd5a89/patchelf-0.19.3.0-py3-none-manylinux1_i686.manylinux_2_5_i686.musllinux_1_1_i686.whl", hash = "sha256:54339e1b048042a2b1c881bc997293c1b864e27ed49d25f66c6fc1683e115df7", size = 626808, upload-time = "2026-11-03T21:33:29.409Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/d8/b261671a4064a145ae8129c5585ac79d121d852055043d03b66ee0aa4653/patchelf-0.19.3.0-py3-none-manylinux1_x86_64.manylinux_2_5_x86_64.musllinux_1_1_x86_64.whl", hash = "sha256:1668a30fcc414debbb1604cd0a361b2f28a33a0ff6e74a74bc71766ee746e21f", size = 550510, upload-time = "2026-11-03T21:33:31.178Z" },
+    { url = "https://files.pythonhosted.org/packages/3e/11/ae611ffc3ccf14bdf4baf5b22ddb853617376fe5aff132fa388bde06aad9/patchelf-0.19.3.0-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.musllinux_1_1_aarch64.whl", hash = "sha256:3c1cde40c0c5769415c29bcb510c6e529a061f4e11c91d4d74c367bf566d1d0c", size = 543394, upload-time = "2026-11-03T21:33:33.107Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/ef/fdb9eabb3dede0870fa6d5e754fd21649c6c03d02594de01265daba4a0a6/patchelf-0.19.3.0-py3-none-manylinux2014_armv7l.manylinux_2_17_armv7l.musllinux_1_1_armv7l.whl", hash = "sha256:39c84338b8fe604d1a299870047a66bccbf16bb4f6d4a4704d260d925cff0fd2", size = 488931, upload-time = "2026-11-03T21:33:34.749Z" },
+    { url = "https://files.pythonhosted.org/packages/63/4e/416756d107ef40be5a6def942f87e68114b1fc27391ec094ff07799d3338/patchelf-0.19.3.0-py3-none-manylinux2014_ppc64le.manylinux_2_17_ppc64le.musllinux_1_1_ppc64le.whl", hash = "sha256:ce15b5fa8b0bd897987b003cec3f49a0bce554c7010ccb1462378c4c9e42afd4", size = 613842, upload-time = "2026-11-03T21:33:36.583Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/f9/cf9d02a2d5db876f2732c0179a0c770299f7e0a610a3cb61e546159bca3d/patchelf-0.19.3.0-py3-none-manylinux2014_s390x.manylinux_2_17_s390x.musllinux_1_1_s390x.whl", hash = "sha256:8a4f106f5d4c3574d6adbf7f2d3733e454a8a8eda4f24660728ff7018a895917", size = 675816, upload-time = "2026-11-03T21:33:38.309Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/77/b53d1873f1e3c3492e5093920fd30b34b58cb945422552dc05d8797d7533/patchelf-0.19.3.0-py3-none-manylinux_2_31_riscv64.musllinux_1_1_riscv64.whl", hash = "sha256:e265835bdc6a40ee4bd4d479eaa80f12102c4eca9b0fc6c1c4acf17c2029aa99", size = 574420, upload-time = "2026-11-03T21:33:39.832Z" },
+]
+
+[[package]]
 name = "pillow"
 version = "12.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1137,7 +1183,7 @@ name = "pyobjc-framework-cocoa"
 version = "12.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pyobjc-core" },
+    { name = "pyobjc-core", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32') or (sys_platform == 'emscripten' and extra == 'extra-20-electromagnetics-fem-cuda12' and extra == 'extra-20-electromagnetics-fem-cuda13') or (sys_platform == 'win32' and extra == 'extra-20-electromagnetics-fem-cuda12' and extra == 'extra-20-electromagnetics-fem-cuda13')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/75/76/49c6da2c6a831020b4854ba20079d5a1030474bffc776b7b73c2eeff8c15/pyobjc_framework_cocoa-12.2.2.tar.gz", hash = "sha256:c96c0ef69a71afbbb0e6a7d594b455c5fe47d62e0db376ee7a2b4b828c16ace9", size = 3132831, upload-time = "2026-08-11T19:44:02.288Z" }
 wheels = [
