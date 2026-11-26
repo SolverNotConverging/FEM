@@ -173,6 +173,7 @@ def test_uniform_guide_returns_reciprocal_aliases() -> None:
     assert {mode.direction for mode in result} == {"forward", "backward"}
 
 
+@pytest.mark.slow
 def test_lossy_longitudinal_bilayer_matches_transfer_matrix() -> None:
     frequency = 10e9
     period = 5e-3
@@ -203,6 +204,7 @@ def test_lossy_longitudinal_bilayer_matches_transfer_matrix() -> None:
     assert mode.residual is not None and mode.residual < 1e-9
 
 
+@pytest.mark.slow
 def test_transverse_pml_has_passive_sign_and_converges() -> None:
     roots: list[complex] = []
     for maximum in (2.0e-3, 1.0e-3):

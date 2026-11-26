@@ -224,6 +224,7 @@ def test_transverse_total_uses_local_material(polarization):
     np.testing.assert_allclose(case.total_transverse[inside], expected)
 
 
+@pytest.mark.slow
 def test_dielectric_sphere_rayleigh_rcs_and_vtk(tmp_path):
     import pyvista as pv
     k, radius, eps = 2*np.pi, .035, 2.
@@ -260,7 +261,7 @@ def test_shared_viewer_switches_fields_and_rcs(dim, polarization, tmp_path):
         solver = fem.ScatteringSolver2D(**options, polarization=polarization)
         target = fem.shapes.Rectangle(bounds=((.35, .65),)*2)
     solver.add_geometry(shape=target, material=fem.materials.copper)
-    solver.mesh(max_element_size=.23)
+    solver.mesh(max_element_size=.23, element_order=1)
     result = solver.solve(backend="cpu", max_refinements=0)
     viewer = fem.show(result.save(tmp_path/"case.h5"), block=False)
     try:

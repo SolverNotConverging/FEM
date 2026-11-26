@@ -33,6 +33,7 @@ def guide(*, open_end=False, higher_mode=False, wall=fem.materials.PEC, pml_laye
     return s
 
 
+@pytest.mark.slow
 def test_two_port_guide_s_and_coherent_excitation(tmp_path, monkeypatch):
     s = guide()
     solves = []
@@ -91,6 +92,7 @@ def test_through_guide_against_analytical_transmission(order, tolerance):
     assert case.port_modes["left"].mesh_data.info["element_order"] == order
 
 
+@pytest.mark.slow
 def test_radiating_guide_nf2ff():
     s = guide(open_end=True, element_order=1)
     r = s.solve(backend="cpu")
@@ -135,7 +137,8 @@ def test_viewer_inspects_port_modes_and_animates_vectors():
     import pyvista as pv
     from PySide6.QtTest import QSignalSpy
 
-    view = guide().solve(backend="cpu", max_refinements=0).show(block=False)
+    solver = guide(pml_layers=1, max_element_size=.19, element_order=1)
+    view = solver.solve(backend="cpu", max_refinements=0).show(block=False)
     try:
         view._inspect.click()
         port = view._port_windows[0]
@@ -291,6 +294,7 @@ def test_dielectric_coax_port_on_annulus(tmp_path):
     assert loaded.port_modes["in"].plot(component="Ey").axes
 
 
+@pytest.mark.slow
 def test_discrete_port_power_and_surface_current():
     from benchmarks.analytical.short_dipole import build_dipole
 
@@ -338,6 +342,7 @@ def test_cylindrical_gap_terminals_and_axial_voltage(end_radius):
     assert voltage == pytest.approx(.03)
 
 
+@pytest.mark.slow
 def test_mixed_waveguide_and_discrete_ports():
     solver = fem.AntennaSolver3D(
         frequency=fem.C_0, x_range=(-0.73, 0.73), y_range=(-0.73, 0.73), z_range=(-0.73, 0.73)
@@ -385,6 +390,7 @@ def test_cudss_solves_all_port_columns():
     np.testing.assert_allclose(accelerated.surface_current_vertices, reference.surface_current_vertices, atol=1e-9)
 
 
+@pytest.mark.slow
 def test_higher_mode_launch_and_passive_multimode_receiver():
     s = guide(higher_mode=True)
     s.set_excitation(port="right", amplitude=0)

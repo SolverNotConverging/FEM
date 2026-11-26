@@ -8,6 +8,10 @@ Run ``python -m pytest`` from the repository root after ``uv sync --locked`` (or
 ``tests/conftest.py`` selects the Agg and offscreen Qt backends, so no display is
 needed. Gmsh needs its platform runtime libraries; Linux typically needs libGLU.
 
+CI runs ``python -m pytest -m "not slow"`` with single-threaded OpenBLAS.
+Run ``python -m pytest -m slow`` locally for the larger antenna and scattering
+solves, periodic-mode comparisons, and microstrip calculation.
+
 Fast cross-family checks::
 
     python -m pytest tests/test_documentation.py tests/test_public_api.py tests/test_examples.py tests/common

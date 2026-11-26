@@ -11,7 +11,7 @@ solver.add_box(x_range=solver.x_range, y_range=solver.y_range, z_range=(gap/2, g
 solver.set_potential(geometry="z-", potential=0., name="ground")
 solver.set_potential(geometry="z+", potential=volts, name="drive")
 solver.mesh(max_element_size=.0015, boundary_refinement=None, interface_refinement=None)
-result = solver.solve()
+result = solver.solve(backend="auto")
 expected = fem.EPSILON_0 * width * height / (gap/2 + gap/8)
 print(f"FEM capacitance {result.conductor_charge('drive') / volts * 1e12:.5f} pF")
 print(f"Analytical capacitance {expected * 1e12:.5f} pF")
