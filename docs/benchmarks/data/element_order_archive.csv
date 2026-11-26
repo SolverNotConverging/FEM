@@ -1,0 +1,7 @@
+observable,metric,p1_error,p2_error
+1D guide,absolute,0.00482,3.06e-05
+2D cell,absolute,0.00316,3.52e-06
+3D cell,absolute,0.0022,2.23e-06
+Guide S21,absolute,0.0382,0.0005
+PEC sphere,relative,0.1689,0.0155
+Impedance sphere,relative,0.0075,0.0156

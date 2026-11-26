@@ -1,0 +1,4 @@
+{
+  "description": "Control experiment: resident CUDA versus hybrid + the same batched CPU estimator.\n\nCPU trace data are copied once from the prepared resident geometry, outside\ntimings. This isolates the warmed arithmetic from trace preparation/caching.\nThe original hybrid benchmark repeatedly rebuilds individual seam traces.\n",
+  "note": "Warm timings only; host trace arrays reused unchanged. Both paths use GPU factorization/iteration."
+}

@@ -53,7 +53,7 @@ between them. Use **Reset view** at the bottom to fit the current selection.
    materials_and_shapes
    adaptivity
    acceleration
-   benchmarks/cuda_vs_scipy
+   benchmarks/README
 
 .. toctree::
    :maxdepth: 2

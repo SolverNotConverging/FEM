@@ -1,0 +1,5 @@
+case,cells_per_wavelength,observable,relative_error,physical_cells,field_dofs,elapsed_s
+cylinder,6,angular_scattering_width_m,0.0019680457708878218,946,3317,0.1125675000002957
+cylinder,4,angular_scattering_width_m,0.001983286664665572,948,3321,0.08797910000021147
+two-port,6,complex_S21,0.0005298702544829787,3950,49960,6.087300400000004
+two-port,4,complex_S21,0.001001095682249497,2592,33186,2.88873250000006

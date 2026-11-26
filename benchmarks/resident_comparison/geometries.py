@@ -92,7 +92,7 @@ BUILDERS = {"iris": iris, "siw": siw, "perforated_waveguide": perforated_wavegui
 
 def assemble(name, mesh_mm):
     solver, sigma, info = BUILDERS[name]()
-    solver.mesh(max_element_size=mesh_mm*MM, wavelength_elements=4)
+    solver.mesh(max_element_size=mesh_mm*MM, wavelength_elements=4, element_order=1)
     info.update(field_dofs=solver.system.ndofs, mesh_mm=mesh_mm,
         mesh_nodes=int(solver.mesh_data.mesh.nvertices),
         mesh_tetrahedra=int(solver.mesh_data.mesh.nelements))

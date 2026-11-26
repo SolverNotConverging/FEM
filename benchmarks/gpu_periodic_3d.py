@@ -40,7 +40,8 @@ def make_solver(case, size_mm):
                                 shape=shapes.Box(bounds=(bounds, (0., 10.16e-3),
                                                         (3.6e-3, 4.4e-3))))
     start = perf_counter()
-    solver.mesh(max_element_size=size_mm * 1e-3, material_aware=False)
+    # The published benchmark uses first-order Nedelec elements at every size.
+    solver.mesh(max_element_size=size_mm * 1e-3, material_aware=False, element_order=1)
     assembly_seconds = perf_counter() - start
     exact = complex(np.sqrt(epsilon - (np.pi / (22.86e-3 * solver.k0))**2))
     target = exact - 0.12 if case.startswith('iris') else exact

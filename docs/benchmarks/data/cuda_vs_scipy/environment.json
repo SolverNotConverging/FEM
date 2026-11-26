@@ -1,0 +1,45 @@
+{
+  "python": "3.12.14",
+  "numpy": "2.5.3",
+  "scipy": "1.18.1",
+  "cupy": "14.2.0",
+  "fem": "2.0.2",
+  "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "gpu_vram": 8585216000,
+  "fdfd": "2.1.2",
+  "source_commits": {
+    "FEM": "6ada998737b0b08db4daf48a7c1de73a10671f92",
+    "FDFD": "432878e540274f7ffe083818db81e606d8839675"
+  },
+  "cpu": "Intel64 Family 6 Model 186 Stepping 2, GenuineIntel",
+  "cuda_runtime": 13020,
+  "methodology": "Paired public-solver CUDA versus SciPy ARPACK benchmark of FEM and sibling FDFD.\n\nRun using FEM's CUDA-enabled Python. GPU jobs must run sequentially. Results are\ncheckpointed after each sample. CPU/GPU use identical meshes and tolerances;\nproduction Krylov defaults are retained except ncv=96 for FDFD periodic 2D\nand FEM periodic 3D, which expose that control through their public APIs.\n",
+  "repeats": 3,
+  "modes": 1,
+  "tolerance": 1e-09,
+  "fdfd_periodic_3d": "Excluded per user instruction",
+  "timings": "public: premeshed solver.solve; eigen: factorization + iteration + eigenpair export, with original-pencil residuals in FDFD and resident FEM 3D; first CUDA per mesh includes resident geometry setup, later medians reuse static geometry only; fresh factorization for every solve. Compilation/runtime probe warmed once globally.",
+  "runtime_probe_seconds": 0.7982065000001057,
+  "threadpools": [
+    {
+      "user_api": "blas",
+      "internal_api": "openblas",
+      "num_threads": 1,
+      "prefix": "libscipy_openblas",
+      "filepath": "libscipy_openblas64_-ed4f167a5330424524f45258e7ca2c8d.dll",
+      "version": "0.3.34.106.0",
+      "threading_layer": "pthreads",
+      "architecture": "Haswell"
+    },
+    {
+      "user_api": "blas",
+      "internal_api": "openblas",
+      "num_threads": 1,
+      "prefix": "libscipy_openblas",
+      "filepath": "libscipy_openblas-197ee2fc9b4d071f7e048078cac74115.dll",
+      "version": "0.3.31.dev",
+      "threading_layer": "pthreads",
+      "architecture": "Haswell"
+    }
+  ]
+}

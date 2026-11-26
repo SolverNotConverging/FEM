@@ -1,5 +1,8 @@
 # FEM benchmarks
 
+The [benchmark reports](../docs/benchmarks/README.md) contain the measured
+results, plots, raw data and reproduction commands for each study.
+
 Run analytical benchmarks after installing the project:
 
 ```sh
@@ -11,12 +14,15 @@ python benchmarks/analytical/short_dipole.py --check
 ```
 
 Compare local AMR and uniform sizing for an eccentric conductor gap, a dielectric
-cylinder, a periodic dielectric insert, a mode in a stretched guide, and a two-port
-guide. Each run records relative observable error against its analytical solution,
-field DOFs, elapsed mesh-and-solve time, and peak process resident memory in MiB.
+cylinder, a periodic dielectric insert, a mode in a stretched guide, a two-port
+guide, and charged 1D and 3D domains. Each run records relative observable error,
+field DOFs, elapsed mesh-and-solve time, peak resident memory in MiB, backend
+history and stopping reason.
 
 ```sh
-python benchmarks/analytical/amr_observables.py --levels 0 1 2
+python benchmarks/analytical/amr_observables.py --levels 0 1 2 --anisotropic --output outputs/benchmarks/amr.csv
+python benchmarks/analytical/amr_observables.py --levels 1 2 --gmsh-control --output outputs/benchmarks/gmsh.csv
+python benchmarks/analytical/plot_amr_observables.py outputs/benchmarks/amr.csv outputs/benchmarks/gmsh.csv --output outputs/benchmarks/plots
 ```
 
 Reports are written to ignored `outputs/benchmarks/analytical/`.

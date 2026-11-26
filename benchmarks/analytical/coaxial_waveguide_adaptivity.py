@@ -131,7 +131,7 @@ def save_report(output, rows, histories, meshes):
     output.mkdir(parents=True, exist_ok=True)
     for filename, data in (('comparison.csv', rows), ('adaptive_history.csv', histories)):
         with (output / filename).open('w', newline='', encoding='utf-8') as stream:
-            writer = csv.DictWriter(stream, fieldnames=data[0].keys())
+            writer = csv.DictWriter(stream, fieldnames=dict.fromkeys(key for row in data for key in row))
             writer.writeheader()
             writer.writerows(data)
     figure = Figure(figsize=(11, 4.5))

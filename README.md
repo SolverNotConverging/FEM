@@ -96,7 +96,7 @@ and material controls. Use `fem view result.h5` to open a saved result.
 - [Materials and shapes](docs/materials_and_shapes.rst), [adaptivity](docs/adaptivity.rst), [CPU/GPU acceleration](docs/acceleration.md)
 - [CUDA versus SciPy benchmarks: RTX 4070 Laptop / i9](docs/benchmarks/cuda_vs_scipy.rst)
 - API reference in [docs/api](docs/api/), [changelog](CHANGELOG.md)
-- [Contributing](CONTRIBUTING.md), [tests](tests/README.rst), [analytical benchmarks](benchmarks/README.md)
+- [Contributing](CONTRIBUTING.md), [tests](tests/README.rst), [benchmark results and plots](docs/benchmarks/README.md)
 
 Build the HTML docs with `uv run --group docs sphinx-build -W docs docs/_build/html`.
 

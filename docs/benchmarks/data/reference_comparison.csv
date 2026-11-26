@@ -1,0 +1,5 @@
+benchmark,observable,metric,october_error,november_error
+rectangular_waveguide_modes,TE10 index,relative_neff_error,7.586385077078958e-05,7.586385077799492e-05
+parallel_plate_electrostatics,2D capacitance,relative_capacitance_error,6.776649241757582e-10,6.776618155512892e-10
+uniform_periodic_medium,Lossy TEM index,relative_neff_error,5.184058429675324e-15,7.402484019420332e-15
+coaxial_waveguide_adaptivity,Coaxial E field,electric_relative_l2_error,0.04657423734466459,0.02246552246702324

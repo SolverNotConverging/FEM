@@ -1,0 +1,23 @@
+{
+  "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "cuda_runtime": 13020,
+  "cupy": "14.2.0",
+  "settings": {
+    "sizes_mm": [
+      4.0,
+      2.5
+    ],
+    "case": "iris_pec",
+    "modes": 2,
+    "ncv": 96,
+    "repeats": 3,
+    "output": "docs\\benchmarks\\data\\resident_periodic_3d"
+  },
+  "threads": {
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "methodology": "Compare the complete warmed 3D periodic hybrid and resident GPU solve paths.\n\nIncludes physical filters, field normalization/reconstruction, interface-jump\nestimation and final host result export. Assembly is excluded; resident setup\nand first-use solve times are recorded separately. Neither path reuses factors.\n",
+  "note": "Application control downloads are two bytes per Arnoldi cycle. cuDSS symbolic analysis and cuSOLVER pinned host workspace are library-internal CPU work."
+}

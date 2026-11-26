@@ -1,0 +1,9 @@
+case,control,resolution,relative_error
+Slab field,60 mm window,120,0.00012557808091985932
+Slab field,60 mm window,240,0.00012575539664038058
+Slab field,120 mm window,240,7.778418595764711e-08
+Slab field,120 mm window,480,1.4525944720526518e-08
+PEC cylinder width,5 PML layers,24,0.0030228987389916482
+PEC cylinder width,5 PML layers,40,0.00426226394497052
+PEC cylinder width,10 PML layers,24,0.0030265505921158817
+PEC cylinder width,10 PML layers,40,0.004269551145363115

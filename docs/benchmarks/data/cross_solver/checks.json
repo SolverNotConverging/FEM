@@ -1,0 +1,1653 @@
+[
+  {
+    "check": "residual",
+    "case": "waveguide_1d_pec_TE1",
+    "passed": true,
+    "error": 4.103024330794206e-13
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_pec_TE1",
+    "passed": true,
+    "error": 1.578012918069445e-16
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_pec_TE1",
+    "passed": true,
+    "error": 8.811166280115947e-14
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_pec_TE1",
+    "passed": true,
+    "error": 7.364432380542366e-17
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_pec_TE1",
+    "passed": true,
+    "error": 2.821955500031567e-12
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_pec_TE1",
+    "passed": true,
+    "error": 1.1607958624948897e-16
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_pec_TE1",
+    "passed": true,
+    "error": 2.9355519237121797e-13
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_pec_TE1",
+    "passed": true,
+    "error": 1.1437128385014253e-16
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 1.7580525830106844e-13
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 3.293440187235319e-09
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 1.5665328177082418e-16
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 3.20370906365941e-05
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 2.2139856767494398e-14
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 3.293429307049678e-09
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 1.0346356909619842e-16
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 3.2037090636372056e-05
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 1.1443517318709102e-12
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 2.052957803755362e-10
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 1.5975727862359712e-16
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 8.010796385238272e-06
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 2.1489352193360645e-13
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 2.0575874337680489e-10
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 1.3782620664543924e-16
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TE1",
+    "passed": true,
+    "error": 8.01079639811686e-06
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 1.8296488252437677e-13
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 3.6193270602780103e-14
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 4.034455877615327e-17
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 1.5543122344752192e-15
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 1.8024399087040872e-14
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 5.084821452783217e-14
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 9.672196980945347e-17
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 2.55351295663786e-15
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 1.1425903848645544e-12
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 2.815525590449397e-13
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 3.004035394145646e-17
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 1.5543122344752192e-15
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 8.88548396650956e-14
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 6.261657858885883e-14
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 1.344531197157511e-16
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_1d_lossy_TEM",
+    "passed": true,
+    "error": 6.217248937900877e-15
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_anisotropic_TEM",
+    "passed": true,
+    "error": 1.0818547035215236e-14
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_anisotropic_TEM",
+    "passed": true,
+    "error": 6.533026396974048e-17
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_anisotropic_TEM",
+    "passed": true,
+    "error": 2.7995330704284716e-15
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_anisotropic_TEM",
+    "passed": true,
+    "error": 1.3235064861874947e-16
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_anisotropic_TEM",
+    "passed": true,
+    "error": 7.654832379808707e-14
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_anisotropic_TEM",
+    "passed": true,
+    "error": 3.9600522765190894e-16
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_anisotropic_TEM",
+    "passed": true,
+    "error": 5.5484262602636704e-15
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_1d_anisotropic_TEM",
+    "passed": true,
+    "error": 7.445882386286266e-17
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_pec",
+    "passed": true,
+    "error": 4.1667878546440905e-14
+  },
+  {
+    "check": "divergence_residual",
+    "case": "waveguide_2d_TE10_pec",
+    "passed": true,
+    "error": 9.265196582647255e-16
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_pec",
+    "passed": true,
+    "error": 1.351753643347772e-16
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_pec",
+    "passed": true,
+    "error": 4.58901990058443e-14
+  },
+  {
+    "check": "divergence_residual",
+    "case": "waveguide_2d_TE10_pec",
+    "passed": true,
+    "error": 9.349171991641957e-16
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_pec",
+    "passed": true,
+    "error": 1.108962172503991e-16
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_pec",
+    "passed": true,
+    "error": 1.219638686107378e-13
+  },
+  {
+    "check": "divergence_residual",
+    "case": "waveguide_2d_TE10_pec",
+    "passed": true,
+    "error": 1.8429138454312414e-15
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_pec",
+    "passed": true,
+    "error": 1.2315818529306259e-16
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_pec",
+    "passed": true,
+    "error": 1.242545239000851e-13
+  },
+  {
+    "check": "divergence_residual",
+    "case": "waveguide_2d_TE10_pec",
+    "passed": true,
+    "error": 1.5609401884451055e-15
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_pec",
+    "passed": true,
+    "error": 1.1745697561460828e-16
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 1.2976358975030414e-14
+  },
+  {
+    "check": "divergence_residual",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 4.1035120449379967e-16
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 1.1379776603703817e-05
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 1.4419184108047583e-16
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 0.00016831635488656627
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 1.8318944716156902e-14
+  },
+  {
+    "check": "divergence_residual",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 4.038154946416894e-16
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 1.1379776604369951e-05
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 1.0925513497590078e-16
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 0.00016831635488800956
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 3.9792866044874165e-14
+  },
+  {
+    "check": "divergence_residual",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 8.735015463751951e-16
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 5.0341840789336345e-06
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 1.5762639670675186e-16
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 4.210508158053461e-05
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 4.214206773389515e-14
+  },
+  {
+    "check": "divergence_residual",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 6.88496592104445e-16
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 5.0341840789336345e-06
+  },
+  {
+    "check": "residual",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 1.199941017072448e-16
+  },
+  {
+    "check": "attenuation",
+    "case": "waveguide_2d_TE10_lossy",
+    "passed": true,
+    "error": 4.210508157909132e-05
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_1.0",
+    "passed": true,
+    "error": 5.0123154033457325e-14
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_1.0",
+    "passed": true,
+    "error": 2.259258528343664e-18
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_1.0",
+    "passed": true,
+    "error": 4.891354034251181e-14
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_1.0",
+    "passed": true,
+    "error": 1.915169997402896e-14
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_1.0",
+    "passed": true,
+    "error": 1.6767933101387469e-13
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_1.0",
+    "passed": true,
+    "error": 1.7873171329845932e-18
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_1.0",
+    "passed": true,
+    "error": 1.655359364619744e-13
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_1.0",
+    "passed": true,
+    "error": 6.424498731121924e-15
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 1.2430348138227105e-14
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 2.8788197337092924e-07
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 1.793336370181155e-18
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 0.0009453215312287266
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 1.429035134146782e-14
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 2.8788197359297385e-07
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 6.00460326325863e-15
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 0.0009453215312079655
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 4.2724935744025606e-14
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 2.7588598294769895e-08
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 2.2444793227264712e-18
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 0.0002369872354561764
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 4.5464845513194643e-14
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 2.758859896090371e-08
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 8.731693441810129e-15
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "passed": true,
+    "error": 0.0002369872354601732
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 1.1382994462026191e-14
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 4.440892098500626e-15
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 4.3790719557631765e-19
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 5.826450433232822e-13
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 1.3178726884995724e-14
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 3.1086244689504383e-15
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 8.461132398139678e-16
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 5.757616605706062e-13
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 3.981353566325865e-14
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 1.1102230246251565e-15
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 3.80573299298657e-19
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 5.968558980384842e-13
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 4.308543854852033e-14
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 2.1094237467877974e-15
+  },
+  {
+    "check": "residual",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 7.019935722641309e-16
+  },
+  {
+    "check": "attenuation",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "passed": true,
+    "error": 5.74207348336131e-13
+  },
+  {
+    "check": "residual",
+    "case": "periodic_3d_TE10",
+    "passed": true,
+    "error": 7.817420603381243e-15
+  },
+  {
+    "check": "gauss_residual",
+    "case": "periodic_3d_TE10",
+    "passed": true,
+    "error": 2.486735919627291e-12
+  },
+  {
+    "check": "residual",
+    "case": "periodic_3d_TE10",
+    "passed": true,
+    "error": 1.2344633130082393e-14
+  },
+  {
+    "check": "gauss_residual",
+    "case": "periodic_3d_TE10",
+    "passed": true,
+    "error": 2.4867359196601978e-12
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "electrostatic_1d_potential",
+    "package": "FEM",
+    "level": 8,
+    "passed": true,
+    "error": 3.525414452956661e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "electrostatic_1d_field",
+    "package": "FEM",
+    "level": 8,
+    "passed": true,
+    "error": 8.040273073303883e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "electrostatic_1d_energy",
+    "package": "FEM",
+    "level": 8,
+    "passed": true,
+    "error": 6.08219586049842e-16
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "electrostatic_1d_potential",
+    "package": "FEM",
+    "level": 16,
+    "passed": true,
+    "error": 1.6535394641346223e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "electrostatic_1d_field",
+    "package": "FEM",
+    "level": 16,
+    "passed": true,
+    "error": 3.413034018600061e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "electrostatic_1d_energy",
+    "package": "FEM",
+    "level": 16,
+    "passed": true,
+    "error": 1.0947952548897163e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "electrostatic_2d_potential",
+    "package": "FEM",
+    "level": 8,
+    "passed": true,
+    "error": 1.263806980503583e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "electrostatic_2d_field",
+    "package": "FEM",
+    "level": 8,
+    "passed": true,
+    "error": 1.1223585308706864e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "electrostatic_2d_energy",
+    "package": "FEM",
+    "level": 8,
+    "passed": true,
+    "error": 1.2164391720996856e-16
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "electrostatic_2d_potential",
+    "package": "FEM",
+    "level": 16,
+    "passed": true,
+    "error": 6.177130056307776e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "electrostatic_2d_field",
+    "package": "FEM",
+    "level": 16,
+    "passed": true,
+    "error": 2.2076612991115123e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "electrostatic_2d_energy",
+    "package": "FEM",
+    "level": 16,
+    "passed": true,
+    "error": 2.4328783441993717e-16
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "poisson_1d_interpolated_potential",
+    "package": "FEM",
+    "level": 8,
+    "passed": true,
+    "error": 5.934514842029812e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "poisson_1d_interpolated_potential",
+    "package": "FEM",
+    "level": 16,
+    "passed": true,
+    "error": 2.8436866691198845e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "poisson_1d_interpolated_potential",
+    "package": "FEM",
+    "level": 32,
+    "passed": true,
+    "error": 1.340737731670996e-13
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_pec_TE1",
+    "package": "FEM",
+    "level": 40,
+    "passed": true,
+    "error": 6.331497785252607e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_pec_TE1",
+    "package": "FDFD",
+    "level": 40,
+    "passed": true,
+    "error": 4.6136524865994974e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_pec_TE1",
+    "package": "FEM",
+    "level": 80,
+    "passed": true,
+    "error": 1.7007889659519723e-13
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_pec_TE1",
+    "package": "FDFD",
+    "level": 80,
+    "passed": true,
+    "error": 1.7302306099875484e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_lossy_TE1",
+    "package": "FEM",
+    "level": 40,
+    "passed": true,
+    "error": 8.633879819550574e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_lossy_TE1",
+    "package": "FDFD",
+    "level": 40,
+    "passed": true,
+    "error": 1.5698789969098903e-16
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_lossy_TE1",
+    "package": "FEM",
+    "level": 80,
+    "passed": true,
+    "error": 1.8051071465429416e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_lossy_TE1",
+    "package": "FDFD",
+    "level": 80,
+    "passed": true,
+    "error": 1.287028770923849e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_lossy_TEM",
+    "package": "FEM",
+    "level": 40,
+    "passed": true,
+    "error": 5.2974282802025453e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_lossy_TEM",
+    "package": "FDFD",
+    "level": 40,
+    "passed": true,
+    "error": 1.036003078535126e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_lossy_TEM",
+    "package": "FEM",
+    "level": 80,
+    "passed": true,
+    "error": 1.4354838259206864e-13
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_lossy_TEM",
+    "package": "FDFD",
+    "level": 80,
+    "passed": true,
+    "error": 7.695983320281112e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_anisotropic_TEM",
+    "package": "FEM",
+    "level": 40,
+    "passed": true,
+    "error": 2.4357527360858513e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_anisotropic_TEM",
+    "package": "FDFD",
+    "level": 40,
+    "passed": true,
+    "error": 0.0
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_anisotropic_TEM",
+    "package": "FEM",
+    "level": 80,
+    "passed": true,
+    "error": 3.461332835490418e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_1d_anisotropic_TEM",
+    "package": "FDFD",
+    "level": 80,
+    "passed": true,
+    "error": 1.2819751242557092e-16
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_2d_TE10_pec",
+    "package": "FEM",
+    "level": 12,
+    "passed": true,
+    "error": 2.7940058216945945e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_2d_TE10_pec",
+    "package": "FDFD",
+    "level": 24,
+    "passed": true,
+    "error": 6.907520042571588e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_2d_TE10_pec",
+    "package": "FEM",
+    "level": 24,
+    "passed": true,
+    "error": 8.234797476395069e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_2d_TE10_pec",
+    "package": "FDFD",
+    "level": 48,
+    "passed": true,
+    "error": 1.940766944130773e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_2d_TE10_lossy",
+    "package": "FEM",
+    "level": 12,
+    "passed": true,
+    "error": 8.22594816334745e-16
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_2d_TE10_lossy",
+    "package": "FDFD",
+    "level": 24,
+    "passed": true,
+    "error": 1.4805819080125594e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_2d_TE10_lossy",
+    "package": "FEM",
+    "level": 24,
+    "passed": true,
+    "error": 1.6448900903980784e-16
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "waveguide_2d_TE10_lossy",
+    "package": "FDFD",
+    "level": 48,
+    "passed": true,
+    "error": 1.4807685775909977e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "periodic_2d_TE_1.0",
+    "package": "FEM",
+    "level": 12,
+    "passed": true,
+    "error": 1.0900724709480054e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "periodic_2d_TE_1.0",
+    "package": "FDFD",
+    "level": 12,
+    "passed": true,
+    "error": 2.4279372858584933e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "periodic_2d_TE_1.0",
+    "package": "FEM",
+    "level": 24,
+    "passed": true,
+    "error": 1.7273351166253532e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "periodic_2d_TE_1.0",
+    "package": "FDFD",
+    "level": 24,
+    "passed": true,
+    "error": 1.3088039610537814e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "package": "FEM",
+    "level": 12,
+    "passed": true,
+    "error": 6.830987689898143e-16
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "package": "FDFD",
+    "level": 12,
+    "passed": true,
+    "error": 7.545919195949178e-16
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "package": "FEM",
+    "level": 24,
+    "passed": true,
+    "error": 3.419138931559225e-16
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "package": "FDFD",
+    "level": 24,
+    "passed": true,
+    "error": 4.440236830761708e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "package": "FEM",
+    "level": 12,
+    "passed": true,
+    "error": 4.447779216839433e-16
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "package": "FDFD",
+    "level": 12,
+    "passed": true,
+    "error": 2.028280162041907e-16
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "package": "FEM",
+    "level": 24,
+    "passed": true,
+    "error": 1.6277815118444277e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "periodic_2d_TM_(2.25-0.09j)",
+    "package": "FDFD",
+    "level": 24,
+    "passed": true,
+    "error": 2.1205733823219772e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "periodic_3d_TE10",
+    "package": "FEM",
+    "level": 1,
+    "passed": true,
+    "error": 1.7090901699441405e-16
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "bands_2d_lossy_TE",
+    "package": "FDFD",
+    "level": 12,
+    "passed": true,
+    "error": 6.406815541557053e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "bands_2d_lossy_TM",
+    "package": "FDFD",
+    "level": 12,
+    "passed": true,
+    "error": 2.2304999370598964e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "bands_2d_lossy_TE",
+    "package": "FDFD",
+    "level": 24,
+    "passed": true,
+    "error": 1.4601660271755912e-13
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "bands_2d_lossy_TM",
+    "package": "FDFD",
+    "level": 24,
+    "passed": true,
+    "error": 8.802253833124556e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "scattering_cylinder_PEC_TE",
+    "package": "FEM",
+    "level": 24,
+    "passed": true,
+    "error": 2.2278509596158627e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "scattering_cylinder_PEC_TE",
+    "package": "FEM",
+    "level": 40,
+    "passed": true,
+    "error": 3.668333394554827e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "scattering_cylinder_PEC_TM",
+    "package": "FEM",
+    "level": 24,
+    "passed": true,
+    "error": 1.3614738268079474e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "scattering_cylinder_PEC_TM",
+    "package": "FEM",
+    "level": 40,
+    "passed": true,
+    "error": 5.773700479544792e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "scattering_cylinder_PEC_TE",
+    "package": "FDFD",
+    "level": 120,
+    "passed": true,
+    "error": 7.929394309290717e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "scattering_cylinder_PEC_TE",
+    "package": "FDFD",
+    "level": 240,
+    "passed": true,
+    "error": 4.53093499521191e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "scattering_cylinder_dielectric_TE",
+    "package": "FDFD",
+    "level": 120,
+    "passed": true,
+    "error": 1.574244724981787e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "scattering_cylinder_dielectric_TE",
+    "package": "FDFD",
+    "level": 240,
+    "passed": true,
+    "error": 1.8838847933465598e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "scattering_cylinder_PEC_TM",
+    "package": "FDFD",
+    "level": 120,
+    "passed": true,
+    "error": 7.638780808797635e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "scattering_cylinder_PEC_TM",
+    "package": "FDFD",
+    "level": 240,
+    "passed": true,
+    "error": 1.6635808312893145e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "scattering_cylinder_dielectric_TM",
+    "package": "FDFD",
+    "level": 120,
+    "passed": true,
+    "error": 1.1386273173844231e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "scattering_cylinder_dielectric_TM",
+    "package": "FDFD",
+    "level": 240,
+    "passed": true,
+    "error": 1.6844686223204176e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "tracking_1d_evanescent",
+    "package": "FDFD",
+    "level": 80,
+    "passed": true,
+    "error": 2.1315233852006722e-13
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "tracking_2d_evanescent",
+    "package": "FDFD",
+    "level": 32,
+    "passed": true,
+    "error": 6.084978089221257e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "sibc_2d_TE10_attenuation",
+    "package": "FEM",
+    "level": 24,
+    "passed": true,
+    "error": 1.1563275648744017e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "sibc_2d_TE10_attenuation",
+    "package": "FDFD",
+    "level": 24,
+    "passed": true,
+    "error": 1.1587747814330054e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "sibc_2d_TE10_attenuation",
+    "package": "FEM",
+    "level": 48,
+    "passed": true,
+    "error": 2.3126561813645286e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "sibc_2d_TE10_attenuation",
+    "package": "FDFD",
+    "level": 48,
+    "passed": true,
+    "error": 2.172789641890646e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "dielectric_slab_TE0_index",
+    "package": "FEM",
+    "level": 120,
+    "passed": true,
+    "error": 1.1432424454116543e-13
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "dielectric_slab_TE0_field",
+    "package": "FEM",
+    "level": 120,
+    "passed": true,
+    "error": 2.1192675683104973e-13
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "dielectric_slab_TE0_index",
+    "package": "FDFD",
+    "level": 120,
+    "passed": true,
+    "error": 3.5302176156765114e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "dielectric_slab_TE0_field",
+    "package": "FDFD",
+    "level": 120,
+    "passed": true,
+    "error": 1.7683410795547697e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "dielectric_slab_TE0_index",
+    "package": "FEM",
+    "level": 240,
+    "passed": true,
+    "error": 7.865306127898225e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "dielectric_slab_TE0_field",
+    "package": "FEM",
+    "level": 240,
+    "passed": true,
+    "error": 4.0553227004395105e-14
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "dielectric_slab_TE0_index",
+    "package": "FDFD",
+    "level": 240,
+    "passed": true,
+    "error": 4.537970872509375e-15
+  },
+  {
+    "check": "cpu_gpu_agreement",
+    "case": "dielectric_slab_TE0_field",
+    "package": "FDFD",
+    "level": 240,
+    "passed": true,
+    "error": 2.3355535535773406e-15
+  },
+  {
+    "check": "family_coverage",
+    "case": "FEM electrostatic_1d",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FEM electrostatic_2d",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FEM waveguide_1d",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FEM waveguide_2d",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FEM periodic_2d",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FEM periodic_3d",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FEM scattering_cylinder",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FEM sibc_2d",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FEM dielectric_slab",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FDFD waveguide_1d",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FDFD waveguide_2d",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FDFD periodic_2d",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FDFD bands_2d",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FDFD scattering_cylinder",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FDFD tracking_1d",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FDFD tracking_2d",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FDFD sibc_2d",
+    "passed": true
+  },
+  {
+    "check": "family_coverage",
+    "case": "FDFD dielectric_slab",
+    "passed": true
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "dielectric_slab_TE0_index",
+    "package": "FEM",
+    "passed": true,
+    "error": 0.5995090367725571
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "periodic_2d_TE_1.0",
+    "package": "FDFD",
+    "passed": true,
+    "error": 0.25077050234401943
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "dielectric_slab_TE0_field",
+    "package": "FEM",
+    "passed": false,
+    "error": 1.0014119957816083
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "waveguide_1d_lossy_TE1",
+    "package": "FDFD",
+    "passed": true,
+    "error": 0.25004155658623783
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "waveguide_2d_TE10_lossy",
+    "package": "FEM",
+    "passed": true,
+    "error": 0.4423826740627108
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "bands_2d_lossy_TE",
+    "package": "FDFD",
+    "passed": true,
+    "error": 0.2500082096959769
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "poisson_1d_interpolated_potential",
+    "package": "FEM",
+    "passed": true,
+    "error": 0.062499864612875676
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "waveguide_2d_TE10_pec",
+    "package": "FEM",
+    "passed": true,
+    "error": 0.44237958881462314
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "package": "FDFD",
+    "passed": true,
+    "error": 0.25051735458070673
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "scattering_cylinder_PEC_TE",
+    "package": "FDFD",
+    "passed": true,
+    "error": 0.5874341368940962
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "scattering_cylinder_dielectric_TE",
+    "package": "FDFD",
+    "passed": true,
+    "error": 0.2555442404056606
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "bands_2d_lossy_TM",
+    "package": "FDFD",
+    "passed": true,
+    "error": 0.2500082111517128
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "waveguide_1d_pec_TE1",
+    "package": "FDFD",
+    "passed": true,
+    "error": 0.25004657152438026
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "scattering_cylinder_PEC_TM",
+    "package": "FEM",
+    "passed": false,
+    "error": 1.4099922997725975
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "dielectric_slab_TE0_index",
+    "package": "FDFD",
+    "passed": true,
+    "error": 0.2506888036255166
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "scattering_cylinder_dielectric_TM",
+    "package": "FDFD",
+    "passed": true,
+    "error": 0.4478890535416526
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "periodic_2d_TE_1.0",
+    "package": "FEM",
+    "passed": true,
+    "error": 0.09597421572161086
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "dielectric_slab_TE0_field",
+    "package": "FDFD",
+    "passed": true,
+    "error": 0.3867698306052138
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "waveguide_2d_TE10_lossy",
+    "package": "FDFD",
+    "passed": true,
+    "error": 0.25012287940028777
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "waveguide_2d_TE10_pec",
+    "package": "FDFD",
+    "passed": true,
+    "error": 0.2501575563857199
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "scattering_cylinder_PEC_TE",
+    "package": "FEM",
+    "passed": true,
+    "error": 0.7434510800809357
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "periodic_2d_TE_(2.25-0.09j)",
+    "package": "FEM",
+    "passed": true,
+    "error": 0.09605738932578546
+  },
+  {
+    "check": "mesh_or_order_convergence",
+    "case": "scattering_cylinder_PEC_TM",
+    "package": "FDFD",
+    "passed": true,
+    "error": 0.5289274543053728
+  }
+]

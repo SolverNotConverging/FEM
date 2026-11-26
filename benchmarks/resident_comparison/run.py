@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
 import statistics
 import subprocess
 import sys
@@ -186,12 +187,13 @@ def main():
         parser.error('Use a new output directory')
     args.output.mkdir(parents=True)
     metadata=dict(commit=capture('git','rev-parse','HEAD').strip(), command=sys.argv,
-        python=sys.version,platform=platform.platform(),cpu=capture('lscpu'),
-        memory=Path('/proc/meminfo').read_text(),gpu_before=capture('nvidia-smi'),gpu_selection=args.gpu,
+        python=sys.version,platform=platform.platform(),cpu=capture('lscpu') if shutil.which('lscpu') else platform.processor(),
+        memory=Path('/proc/meminfo').read_text() if Path('/proc/meminfo').is_file() else None,
+        gpu_before=capture('nvidia-smi'),gpu_selection=args.gpu,
         packages=capture(sys.executable,'-m','pip','freeze'),cases=selected,repeats=args.repeats,
         source_sha256={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest()
             for p in list((ROOT/'src/fem/common').glob('*'))+list(Path(__file__).parent.glob('*.py')) if p.is_file()},
-        methodology=__doc__,load_before=os.getloadavg())
+        methodology=__doc__,load_before=os.getloadavg() if hasattr(os,'getloadavg') else None)
     save(args.output/'metadata.json',metadata)
     progress=dict(status='running',total=len(selected),completed=[])
     combined=[]
@@ -218,7 +220,8 @@ def main():
         save(args.output/'summary.json',combined)
         save(args.output/'progress.json',progress)
     progress.update(status='complete',active=None);save(args.output/'progress.json',progress)
-    metadata.update(gpu_after=capture('nvidia-smi'),load_after=os.getloadavg());save(args.output/'metadata.json',metadata)
+    metadata.update(gpu_after=capture('nvidia-smi'),load_after=os.getloadavg() if hasattr(os,'getloadavg') else None)
+    save(args.output/'metadata.json',metadata)
     if combined:
         with (args.output/'summary.csv').open('w',newline='') as stream:
             writer=csv.DictWriter(stream,fieldnames=list(combined[0]),lineterminator='\n')

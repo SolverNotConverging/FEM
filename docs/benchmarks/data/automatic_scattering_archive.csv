@@ -1,0 +1,4 @@
+case,units,FEM,series_reference
+Cylinder TE,m,0.001575,0.001567
+Cylinder TM,m,0.005729,0.005683
+Copper sphere,m²,0.002451,0.00247

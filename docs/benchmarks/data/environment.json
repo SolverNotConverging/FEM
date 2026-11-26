@@ -1,0 +1,30 @@
+{
+  "date": "2026-11-26",
+  "solver_commit": "6ada998737b0b08db4daf48a7c1de73a10671f92",
+  "fdfd_commit": "432878e540274f7ffe083818db81e606d8839675",
+  "python": "3.12.14",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "processor": "13th Gen Intel(R) Core(TM) i9-13900H",
+  "physical_memory_GiB": 63.6,
+  "GPU": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "driver": "596.49",
+  "VRAM_MiB": 8188,
+  "CUDA_runtime": "13.2",
+  "packages": {
+    "numpy": "2.5.3",
+    "scipy": "1.18.1",
+    "gmsh": "4.15.2",
+    "scikit-fem": "12.0.2",
+    "mmgpy": "0.18.0",
+    "matplotlib": "3.11.2",
+    "h5py": "3.16.0",
+    "cupy-cuda13x": "14.2.0",
+    "threadpoolctl": "3.8.0"
+  },
+  "threads": {
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1,
+    "MKL_NUM_THREADS": 1
+  },
+  "workload": "Shared machine. Another simulation used the GPU during the measurements. AMR times are single observations; paired performance suites report three warmed timings per backend."
+}

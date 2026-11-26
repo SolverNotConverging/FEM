@@ -1,0 +1,832 @@
+{
+  "results": [
+    {
+      "package": "FEM",
+      "family": "waveguide_2d",
+      "case": "pec",
+      "size": 48,
+      "id": "FEM_waveguide_2d_pec_48",
+      "dofs": 6447,
+      "eigen_dimension": 12894,
+      "assembly_seconds": 0.2630724000000555,
+      "cpu_seconds": 0.42294770000034987,
+      "gpu_seconds": 8.67096790000005,
+      "cpu_eigen_seconds": 0.299007999999958,
+      "gpu_eigen_seconds": 8.403573399999914,
+      "speedup": 0.048777449631701136,
+      "eigen_speedup": 0.03558105412632691,
+      "total_speedup": 0.07456028385739769,
+      "mesh_plus_warm_solve_speedup": 0.07678721798472268,
+      "first_solve_speedup": 0.0497056820612959,
+      "max_relative_neff_difference": 5.3842891920586894e-15,
+      "max_residual": 2.4611772881537725e-13,
+      "first": [
+        {
+          "backend": "cpu",
+          "public_seconds": 0.48688080000010814,
+          "eigen_seconds": 0.32740229999990333,
+          "dofs": 6447,
+          "eigen_dimension": 12894,
+          "nnz": 96237,
+          "residual": 1.2470526821318387e-13,
+          "neff": [
+            [
+              0.8660264274903972,
+              7.625414107656839e-19
+            ]
+          ],
+          "method": ""
+        },
+        {
+          "backend": "gpu",
+          "public_seconds": 9.795274499999778,
+          "eigen_seconds": 9.58123149999983,
+          "dofs": 6447,
+          "eigen_dimension": 12894,
+          "nnz": 96237,
+          "residual": 1.623369478074999e-13,
+          "neff": [
+            [
+              0.8660264274903927,
+              -8.057400910756532e-19
+            ]
+          ],
+          "method": ""
+        }
+      ],
+      "samples": [
+        {
+          "repeat": 0,
+          "backend": "cpu",
+          "public_seconds": 0.42294770000034987,
+          "eigen_seconds": 0.299007999999958,
+          "dofs": 6447,
+          "eigen_dimension": 12894,
+          "nnz": 96237,
+          "residual": 1.2470526821318387e-13,
+          "neff": [
+            [
+              0.8660264274903972,
+              7.625414107656839e-19
+            ]
+          ],
+          "method": ""
+        },
+        {
+          "repeat": 0,
+          "backend": "gpu",
+          "public_seconds": 8.943642300000192,
+          "eigen_seconds": 8.714901000000282,
+          "dofs": 6447,
+          "eigen_dimension": 12894,
+          "nnz": 96237,
+          "residual": 1.8743921196493512e-13,
+          "neff": [
+            [
+              0.8660264274903928,
+              8.758320674609466e-19
+            ]
+          ],
+          "method": ""
+        },
+        {
+          "repeat": 1,
+          "backend": "gpu",
+          "public_seconds": 8.67096790000005,
+          "eigen_seconds": 8.403573399999914,
+          "dofs": 6447,
+          "eigen_dimension": 12894,
+          "nnz": 96237,
+          "residual": 2.232399524450538e-13,
+          "neff": [
+            [
+              0.8660264274903925,
+              1.2927840357468759e-18
+            ]
+          ],
+          "method": ""
+        },
+        {
+          "repeat": 1,
+          "backend": "cpu",
+          "public_seconds": 0.427235500000279,
+          "eigen_seconds": 0.3032858000001397,
+          "dofs": 6447,
+          "eigen_dimension": 12894,
+          "nnz": 96237,
+          "residual": 1.2470526821318387e-13,
+          "neff": [
+            [
+              0.8660264274903972,
+              7.625414107656839e-19
+            ]
+          ],
+          "method": ""
+        },
+        {
+          "repeat": 2,
+          "backend": "cpu",
+          "public_seconds": 0.4197644000000764,
+          "eigen_seconds": 0.29238119999990886,
+          "dofs": 6447,
+          "eigen_dimension": 12894,
+          "nnz": 96237,
+          "residual": 1.2470526821318387e-13,
+          "neff": [
+            [
+              0.8660264274903972,
+              7.625414107656839e-19
+            ]
+          ],
+          "method": ""
+        },
+        {
+          "repeat": 2,
+          "backend": "gpu",
+          "public_seconds": 8.64147580000008,
+          "eigen_seconds": 8.322247400000379,
+          "dofs": 6447,
+          "eigen_dimension": 12894,
+          "nnz": 96237,
+          "residual": 2.4611772881537725e-13,
+          "neff": [
+            [
+              0.8660264274903929,
+              -8.355980024663673e-19
+            ]
+          ],
+          "method": ""
+        }
+      ]
+    },
+    {
+      "package": "FEM",
+      "family": "periodic_2d",
+      "case": "pec",
+      "size": 48,
+      "id": "FEM_periodic_2d_pec_48",
+      "dofs": 5792,
+      "eigen_dimension": 11584,
+      "assembly_seconds": 0.16718390000005456,
+      "cpu_seconds": 0.2629924999996547,
+      "gpu_seconds": 3.3043732000001,
+      "cpu_eigen_seconds": 0.20386630000029982,
+      "gpu_eigen_seconds": 3.0117730000001757,
+      "speedup": 0.07958922436474389,
+      "eigen_speedup": 0.06768979601061831,
+      "total_speedup": 0.17241940920992938,
+      "mesh_plus_warm_solve_speedup": 0.12391453967434098,
+      "first_solve_speedup": 0.1326046857630439,
+      "max_relative_neff_difference": 3.555267280169869e-14,
+      "max_residual": 8.351360468012819e-13,
+      "first": [
+        {
+          "backend": "cpu",
+          "public_seconds": 0.46080790000041816,
+          "eigen_seconds": 0.34536590000016076,
+          "dofs": 5792,
+          "eigen_dimension": 11584,
+          "nnz": 190948,
+          "residual": 8.351360468012819e-13,
+          "neff": [
+            [
+              0.6620256842594373,
+              1.0467463755579193e-16
+            ]
+          ],
+          "method": "sparse"
+        },
+        {
+          "backend": "gpu",
+          "public_seconds": 3.4750499000001582,
+          "eigen_seconds": 3.236023699999805,
+          "dofs": 5792,
+          "eigen_dimension": 11584,
+          "nnz": 190948,
+          "residual": 7.85842842373097e-13,
+          "neff": [
+            [
+              0.6620256842594608,
+              1.552867619783677e-16
+            ]
+          ],
+          "method": "sparse"
+        }
+      ],
+      "samples": [
+        {
+          "repeat": 0,
+          "backend": "cpu",
+          "public_seconds": 0.22372530000029656,
+          "eigen_seconds": 0.17605800000001182,
+          "dofs": 5792,
+          "eigen_dimension": 11584,
+          "nnz": 190948,
+          "residual": 8.351360468012819e-13,
+          "neff": [
+            [
+              0.6620256842594373,
+              1.0467463755579193e-16
+            ]
+          ],
+          "method": "sparse"
+        },
+        {
+          "repeat": 0,
+          "backend": "gpu",
+          "public_seconds": 3.5158172000001287,
+          "eigen_seconds": 3.32976809999991,
+          "dofs": 5792,
+          "eigen_dimension": 11584,
+          "nnz": 190948,
+          "residual": 7.786289385235305e-13,
+          "neff": [
+            [
+              0.6620256842594587,
+              1.600930386793254e-16
+            ]
+          ],
+          "method": "sparse"
+        },
+        {
+          "repeat": 1,
+          "backend": "gpu",
+          "public_seconds": 3.3043732000001,
+          "eigen_seconds": 3.0117730000001757,
+          "dofs": 5792,
+          "eigen_dimension": 11584,
+          "nnz": 190948,
+          "residual": 7.833802524547248e-13,
+          "neff": [
+            [
+              0.6620256842594582,
+              1.1532607686751475e-16
+            ]
+          ],
+          "method": "sparse"
+        },
+        {
+          "repeat": 1,
+          "backend": "cpu",
+          "public_seconds": 0.2629924999996547,
+          "eigen_seconds": 0.20386630000029982,
+          "dofs": 5792,
+          "eigen_dimension": 11584,
+          "nnz": 190948,
+          "residual": 8.351360468012819e-13,
+          "neff": [
+            [
+              0.6620256842594373,
+              1.0467463755579193e-16
+            ]
+          ],
+          "method": "sparse"
+        },
+        {
+          "repeat": 2,
+          "backend": "cpu",
+          "public_seconds": 0.4418521000002329,
+          "eigen_seconds": 0.34368670000003476,
+          "dofs": 5792,
+          "eigen_dimension": 11584,
+          "nnz": 190948,
+          "residual": 8.351360468012819e-13,
+          "neff": [
+            [
+              0.6620256842594373,
+              1.0467463755579193e-16
+            ]
+          ],
+          "method": "sparse"
+        },
+        {
+          "repeat": 2,
+          "backend": "gpu",
+          "public_seconds": 3.0852746999999,
+          "eigen_seconds": 2.8667633999998543,
+          "dofs": 5792,
+          "eigen_dimension": 11584,
+          "nnz": 190948,
+          "residual": 7.766919820442311e-13,
+          "neff": [
+            [
+              0.6620256842594573,
+              1.5575072427522624e-16
+            ]
+          ],
+          "method": "sparse"
+        }
+      ]
+    },
+    {
+      "package": "FDFD",
+      "family": "waveguide_2d",
+      "case": "pec",
+      "size": 64,
+      "id": "FDFD_waveguide_2d_pec_64",
+      "dofs": 4000,
+      "eigen_dimension": 4000,
+      "assembly_seconds": 0.007026199999927485,
+      "cpu_seconds": 0.025196100000357546,
+      "gpu_seconds": 0.9025268000000324,
+      "cpu_eigen_seconds": 0.018681399999877613,
+      "gpu_eigen_seconds": 0.8213772999997673,
+      "speedup": 0.02791728733191817,
+      "eigen_speedup": 0.022743993533645143,
+      "total_speedup": 0.023918775015590497,
+      "mesh_plus_warm_solve_speedup": 0.03542652269882728,
+      "first_solve_speedup": 0.018885324396831788,
+      "max_relative_neff_difference": 3.4868556572332315e-14,
+      "max_residual": 1.4734546112620857e-16,
+      "first": [
+        {
+          "backend": "cpu",
+          "public_seconds": 0.02573149999989255,
+          "eigen_seconds": 0.019103499999800988,
+          "dofs": 4000,
+          "eigen_dimension": 4000,
+          "nnz": 19744,
+          "candidates": 1,
+          "ncv": null,
+          "residual": 1.4657982733028561e-16,
+          "neff": [
+            [
+              0.8660543836152362,
+              0.0
+            ]
+          ],
+          "method": "arpack"
+        },
+        {
+          "backend": "gpu",
+          "public_seconds": 1.3625129999995806,
+          "eigen_seconds": 1.2816482000002907,
+          "dofs": 4000,
+          "eigen_dimension": 4000,
+          "nnz": 19744,
+          "candidates": 1,
+          "ncv": null,
+          "residual": 1.1151527015575188e-16,
+          "neff": [
+            [
+              0.8660543836152066,
+              0.0
+            ]
+          ],
+          "method": "cuda-refined"
+        }
+      ],
+      "samples": [
+        {
+          "repeat": 0,
+          "backend": "cpu",
+          "public_seconds": 0.027109199999813427,
+          "eigen_seconds": 0.019506499999806692,
+          "dofs": 4000,
+          "eigen_dimension": 4000,
+          "nnz": 19744,
+          "candidates": 1,
+          "ncv": null,
+          "residual": 1.4734546112620857e-16,
+          "neff": [
+            [
+              0.8660543836152362,
+              0.0
+            ]
+          ],
+          "method": "arpack"
+        },
+        {
+          "repeat": 0,
+          "backend": "gpu",
+          "public_seconds": 0.8925994000001083,
+          "eigen_seconds": 0.8118839999997363,
+          "dofs": 4000,
+          "eigen_dimension": 4000,
+          "nnz": 19744,
+          "candidates": 1,
+          "ncv": null,
+          "residual": 1.1087039972419827e-16,
+          "neff": [
+            [
+              0.8660543836152063,
+              0.0
+            ]
+          ],
+          "method": "cuda-refined"
+        },
+        {
+          "repeat": 1,
+          "backend": "gpu",
+          "public_seconds": 0.9025268000000324,
+          "eigen_seconds": 0.8213772999997673,
+          "dofs": 4000,
+          "eigen_dimension": 4000,
+          "nnz": 19744,
+          "candidates": 1,
+          "ncv": null,
+          "residual": 1.129994453825606e-16,
+          "neff": [
+            [
+              0.866054383615206,
+              0.0
+            ]
+          ],
+          "method": "cuda-refined"
+        },
+        {
+          "repeat": 1,
+          "backend": "cpu",
+          "public_seconds": 0.025196100000357546,
+          "eigen_seconds": 0.018681399999877613,
+          "dofs": 4000,
+          "eigen_dimension": 4000,
+          "nnz": 19744,
+          "candidates": 1,
+          "ncv": null,
+          "residual": 1.2745942206852531e-16,
+          "neff": [
+            [
+              0.8660543836152362,
+              0.0
+            ]
+          ],
+          "method": "arpack"
+        },
+        {
+          "repeat": 2,
+          "backend": "cpu",
+          "public_seconds": 0.022739200000160054,
+          "eigen_seconds": 0.01666380000006029,
+          "dofs": 4000,
+          "eigen_dimension": 4000,
+          "nnz": 19744,
+          "candidates": 1,
+          "ncv": null,
+          "residual": 1.35943857430924e-16,
+          "neff": [
+            [
+              0.8660543836152362,
+              0.0
+            ]
+          ],
+          "method": "arpack"
+        },
+        {
+          "repeat": 2,
+          "backend": "gpu",
+          "public_seconds": 0.9185198000000128,
+          "eigen_seconds": 0.8372720000002118,
+          "dofs": 4000,
+          "eigen_dimension": 4000,
+          "nnz": 19744,
+          "candidates": 1,
+          "ncv": null,
+          "residual": 1.1176319875441418e-16,
+          "neff": [
+            [
+              0.8660543836152063,
+              0.0
+            ]
+          ],
+          "method": "cuda-refined"
+        }
+      ]
+    },
+    {
+      "package": "FDFD",
+      "family": "periodic_2d",
+      "case": "pec",
+      "size": 64,
+      "id": "FDFD_periodic_2d_pec_64",
+      "dofs": 4032,
+      "eigen_dimension": 4032,
+      "assembly_seconds": 0.009335199999895849,
+      "cpu_seconds": 0.09908619999987422,
+      "gpu_seconds": 1.1782063000000562,
+      "cpu_eigen_seconds": 0.09588819999999032,
+      "gpu_eigen_seconds": 1.0808207999998558,
+      "speedup": 0.08409919383377044,
+      "eigen_speedup": 0.08871794473237665,
+      "total_speedup": 0.11445058550359362,
+      "mesh_plus_warm_solve_speedup": 0.091299040917538,
+      "first_solve_speedup": 0.10879412177450573,
+      "max_relative_neff_difference": 1.4689010215674536e-13,
+      "max_residual": 2.089235555647006e-14,
+      "first": [
+        {
+          "backend": "cpu",
+          "public_seconds": 0.1589998999997988,
+          "eigen_seconds": 0.15459300000020448,
+          "dofs": 4032,
+          "eigen_dimension": 4032,
+          "nnz": 16064,
+          "candidates": 1,
+          "ncv": 96,
+          "residual": 6.798932385560086e-18,
+          "neff": [
+            [
+              0.6621108643325931,
+              3.660527512550051e-18
+            ]
+          ],
+          "method": "arpack"
+        },
+        {
+          "backend": "gpu",
+          "public_seconds": 1.461475099999916,
+          "eigen_seconds": 1.3395440999997845,
+          "dofs": 4032,
+          "eigen_dimension": 4032,
+          "nnz": 16064,
+          "candidates": 1,
+          "ncv": 96,
+          "residual": 1.8631109684488686e-14,
+          "neff": [
+            [
+              0.6621108643326868,
+              8.491000779244795e-17
+            ]
+          ],
+          "method": "cuda-refined"
+        }
+      ],
+      "samples": [
+        {
+          "repeat": 0,
+          "backend": "cpu",
+          "public_seconds": 0.07745580000027985,
+          "eigen_seconds": 0.0747524000003068,
+          "dofs": 4032,
+          "eigen_dimension": 4032,
+          "nnz": 16064,
+          "candidates": 1,
+          "ncv": 96,
+          "residual": 6.798932385560086e-18,
+          "neff": [
+            [
+              0.6621108643325931,
+              3.660527512550051e-18
+            ]
+          ],
+          "method": "arpack"
+        },
+        {
+          "repeat": 0,
+          "backend": "gpu",
+          "public_seconds": 1.3105438999996295,
+          "eigen_seconds": 1.2165724999999838,
+          "dofs": 4032,
+          "eigen_dimension": 4032,
+          "nnz": 16064,
+          "candidates": 1,
+          "ncv": 96,
+          "residual": 2.089235555647006e-14,
+          "neff": [
+            [
+              0.6621108643326904,
+              6.266848757287056e-16
+            ]
+          ],
+          "method": "cuda-refined"
+        },
+        {
+          "repeat": 1,
+          "backend": "gpu",
+          "public_seconds": 1.1782063000000562,
+          "eigen_seconds": 1.0808207999998558,
+          "dofs": 4032,
+          "eigen_dimension": 4032,
+          "nnz": 16064,
+          "candidates": 1,
+          "ncv": 96,
+          "residual": 1.4765570029448546e-14,
+          "neff": [
+            [
+              0.6621108643326381,
+              3.6197563800461096e-16
+            ]
+          ],
+          "method": "cuda-refined"
+        },
+        {
+          "repeat": 1,
+          "backend": "cpu",
+          "public_seconds": 0.10708530000010796,
+          "eigen_seconds": 0.10374729999966803,
+          "dofs": 4032,
+          "eigen_dimension": 4032,
+          "nnz": 16064,
+          "candidates": 1,
+          "ncv": 96,
+          "residual": 6.798932385560086e-18,
+          "neff": [
+            [
+              0.6621108643325931,
+              3.660527512550051e-18
+            ]
+          ],
+          "method": "arpack"
+        },
+        {
+          "repeat": 2,
+          "backend": "cpu",
+          "public_seconds": 0.09908619999987422,
+          "eigen_seconds": 0.09588819999999032,
+          "dofs": 4032,
+          "eigen_dimension": 4032,
+          "nnz": 16064,
+          "candidates": 1,
+          "ncv": 96,
+          "residual": 6.798932385560086e-18,
+          "neff": [
+            [
+              0.6621108643325931,
+              3.660527512550051e-18
+            ]
+          ],
+          "method": "arpack"
+        },
+        {
+          "repeat": 2,
+          "backend": "gpu",
+          "public_seconds": 0.917254899999989,
+          "eigen_seconds": 0.8524366999999984,
+          "dofs": 4032,
+          "eigen_dimension": 4032,
+          "nnz": 16064,
+          "candidates": 1,
+          "ncv": 96,
+          "residual": 6.808192212382673e-15,
+          "neff": [
+            [
+              0.6621108643325467,
+              3.346150892794871e-16
+            ]
+          ],
+          "method": "cuda-refined"
+        }
+      ]
+    },
+    {
+      "package": "FEM",
+      "family": "periodic_3d",
+      "case": "iris_pec",
+      "size": 1.6,
+      "id": "FEM_periodic_3d_iris_pec_1.6",
+      "dofs": 8774,
+      "eigen_dimension": 17548,
+      "assembly_seconds": 2.881087999999636,
+      "cpu_seconds": 1.6542874000001575,
+      "gpu_seconds": 3.524307300000146,
+      "cpu_eigen_seconds": 1.0297775999997612,
+      "gpu_eigen_seconds": 3.1888082999998915,
+      "speedup": 0.4693936309129709,
+      "eigen_speedup": 0.32293493465875517,
+      "total_speedup": 0.6335953633053187,
+      "mesh_plus_warm_solve_speedup": 0.7080555043964184,
+      "first_solve_speedup": 0.40270805352592143,
+      "max_relative_neff_difference": 7.076765674615089e-15,
+      "max_residual": 2.494290666182531e-13,
+      "first": [
+        {
+          "backend": "cpu",
+          "public_seconds": 1.8412287000001015,
+          "eigen_seconds": 1.1966489999999794,
+          "dofs": 8774,
+          "eigen_dimension": 17548,
+          "nnz": 362602,
+          "residual": 4.086196689988269e-14,
+          "neff": [
+            [
+              0.6905947076700002,
+              -2.170310169102331e-18
+            ]
+          ],
+          "method": "sparse-shift-invert"
+        },
+        {
+          "backend": "gpu",
+          "public_seconds": 4.572117900000194,
+          "eigen_seconds": 3.1387172999998256,
+          "dofs": 8774,
+          "eigen_dimension": 17548,
+          "nnz": 362602,
+          "residual": 1.7318138475380996e-13,
+          "neff": [
+            [
+              0.6905947076700003,
+              4.525950088272719e-15
+            ]
+          ],
+          "method": "cuda-resident-refined-arnoldi"
+        }
+      ],
+      "samples": [
+        {
+          "repeat": 0,
+          "backend": "cpu",
+          "public_seconds": 1.6542874000001575,
+          "eigen_seconds": 1.0330817999997635,
+          "dofs": 8774,
+          "eigen_dimension": 17548,
+          "nnz": 362602,
+          "residual": 4.086196689988269e-14,
+          "neff": [
+            [
+              0.6905947076700002,
+              -2.170310169102331e-18
+            ]
+          ],
+          "method": "sparse-shift-invert"
+        },
+        {
+          "repeat": 0,
+          "backend": "gpu",
+          "public_seconds": 3.524307300000146,
+          "eigen_seconds": 3.1888082999998915,
+          "dofs": 8774,
+          "eigen_dimension": 17548,
+          "nnz": 362602,
+          "residual": 2.494290666182531e-13,
+          "neff": [
+            [
+              0.6905947076700004,
+              4.533799119078451e-15
+            ]
+          ],
+          "method": "cuda-resident-refined-arnoldi"
+        },
+        {
+          "repeat": 1,
+          "backend": "gpu",
+          "public_seconds": 3.7884569000002557,
+          "eigen_seconds": 3.421757300000081,
+          "dofs": 8774,
+          "eigen_dimension": 17548,
+          "nnz": 362602,
+          "residual": 1.658553915509338e-13,
+          "neff": [
+            [
+              0.6905947076699956,
+              1.7767545213689864e-15
+            ]
+          ],
+          "method": "cuda-resident-refined-arnoldi"
+        },
+        {
+          "repeat": 1,
+          "backend": "cpu",
+          "public_seconds": 1.6283714999999575,
+          "eigen_seconds": 1.021762999999737,
+          "dofs": 8774,
+          "eigen_dimension": 17548,
+          "nnz": 362602,
+          "residual": 4.086196689988269e-14,
+          "neff": [
+            [
+              0.6905947076700002,
+              -2.170310169102331e-18
+            ]
+          ],
+          "method": "sparse-shift-invert"
+        },
+        {
+          "repeat": 2,
+          "backend": "cpu",
+          "public_seconds": 1.6673151999998481,
+          "eigen_seconds": 1.0297775999997612,
+          "dofs": 8774,
+          "eigen_dimension": 17548,
+          "nnz": 362602,
+          "residual": 4.086196689988269e-14,
+          "neff": [
+            [
+              0.6905947076700002,
+              -2.170310169102331e-18
+            ]
+          ],
+          "method": "sparse-shift-invert"
+        },
+        {
+          "repeat": 2,
+          "backend": "gpu",
+          "public_seconds": 3.267326000000139,
+          "eigen_seconds": 2.9512549000000945,
+          "dofs": 8774,
+          "eigen_dimension": 17548,
+          "nnz": 362602,
+          "residual": 2.121745257052955e-13,
+          "neff": [
+            [
+              0.6905947076699981,
+              3.1024299052489308e-15
+            ]
+          ],
+          "method": "cuda-resident-refined-arnoldi"
+        }
+      ]
+    }
+  ],
+  "failures": []
+}

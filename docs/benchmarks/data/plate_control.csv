@@ -1,0 +1,3 @@
+case,strategy,level,observable,relative_error,field_dofs,residual,elapsed_s,peak_rss_MiB,elements,refinements,backends,fallback_reason,status
+plate_3d,gmsh,1,electrostatic_energy,0.07042631858381526,151,1.7641445962871494,0.06725159999996322,93.6640625,438,1,gmsh,,refinement_limit
+plate_3d,gmsh,2,electrostatic_energy,0.05747942038036831,180,1.5436730228020128,0.10378840000021228,94.17578125,598,2,gmsh / gmsh,,refinement_limit

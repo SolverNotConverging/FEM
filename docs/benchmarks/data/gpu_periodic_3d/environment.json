@@ -1,0 +1,55 @@
+{
+  "python": "3.12.14",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "processor": "Intel64 Family 6 Model 186 Stepping 2, GenuineIntel",
+  "numpy": "2.5.3",
+  "scipy": "1.18.1",
+  "cupy": "14.2.0",
+  "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "cuda_runtime": 13020,
+  "gpu_probe_seconds": 0.2564346999997724,
+  "unsupported_cases": "Periodic FEM explicitly rejects SIBC assignments.",
+  "blas_thread_environment": {
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "settings": {
+    "sizes_mm": [
+      4.0,
+      2.5
+    ],
+    "cases": [
+      "uniform_pec",
+      "uniform_lossy",
+      "iris_pec",
+      "iris_lossy"
+    ],
+    "repeats": 3,
+    "modes": 1,
+    "output": "docs\\benchmarks\\data\\gpu_periodic_3d"
+  },
+  "methodology": "Warm runtime and per-configuration untimed solves; fresh factorization per solve; alternating backend order; same assembled mesh; CPU ARPACK / device GPU refined Arnoldi; CPU field validation for both; total = mesh/assembly + median public solve time; no adaptive refinement.",
+  "threadpools": [
+    {
+      "user_api": "blas",
+      "internal_api": "openblas",
+      "num_threads": 1,
+      "prefix": "libscipy_openblas",
+      "filepath": "libscipy_openblas64_-ed4f167a5330424524f45258e7ca2c8d.dll",
+      "version": "0.3.34.106.0",
+      "threading_layer": "pthreads",
+      "architecture": "Haswell"
+    },
+    {
+      "user_api": "blas",
+      "internal_api": "openblas",
+      "num_threads": 1,
+      "prefix": "libscipy_openblas",
+      "filepath": "libscipy_openblas-197ee2fc9b4d071f7e048078cac74115.dll",
+      "version": "0.3.31.dev",
+      "threading_layer": "pthreads",
+      "architecture": "Haswell"
+    }
+  ]
+}

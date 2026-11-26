@@ -1,0 +1,3 @@
+TE: 412 DOFs, CPU 0.012 s, cuDSS 0.235 s
+TM: 412 DOFs, CPU 0.013 s, cuDSS 0.243 s
+vector: 35723 DOFs, CPU 31.289 s, cuDSS 4.214 s

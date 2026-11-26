@@ -1,0 +1,7 @@
+case,strategy,level,observable,relative_error,field_dofs,residual,elapsed_s,peak_rss_MiB,elements,refinements,backends,fallback_reason,status
+narrow_gap,gmsh,1,capacitance_F_per_m,0.006643097547403764,1662,0.17349336577011495,0.2502662000001692,94.09375,797,1,gmsh,,refinement_limit
+narrow_gap,gmsh,2,capacitance_F_per_m,0.0007507291060752943,2134,0.10113309108636483,0.2866751999999906,95.19140625,1031,2,gmsh / gmsh,,refinement_limit
+inclusion,gmsh,1,angular_scattering_width_m,0.002044984796639197,6223,0.013536857198568227,0.2741187000001446,116.72265625,1974,1,gmsh,,refinement_limit
+inclusion,gmsh,2,angular_scattering_width_m,0.0013722675055569704,11049,0.006578416593946809,0.5743173000000752,142.37109375,3912,2,gmsh / gmsh,,refinement_limit
+multiport,gmsh,1,complex_S21,0.21116580235115498,8614,2.18622405865753,1.773533000000043,152.76171875,3585,1,gmsh,,refinement_limit
+multiport,gmsh,2,complex_S21,0.2062295753603034,8749,2.1918113848064205,2.7239402000000155,157.359375,3631,2,gmsh / gmsh,,refinement_limit

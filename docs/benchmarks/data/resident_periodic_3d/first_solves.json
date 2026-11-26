@@ -1,0 +1,30 @@
+[
+  {
+    "size_mm": 4.0,
+    "dofs": 1595,
+    "path": "hybrid",
+    "seconds": 2.0794005999996443,
+    "setup_seconds": 0.0
+  },
+  {
+    "size_mm": 4.0,
+    "dofs": 1595,
+    "path": "resident",
+    "seconds": 3.358490999999958,
+    "setup_seconds": 0.0
+  },
+  {
+    "size_mm": 2.5,
+    "dofs": 3666,
+    "path": "hybrid",
+    "seconds": 1.1832193999998708,
+    "setup_seconds": 0.0
+  },
+  {
+    "size_mm": 2.5,
+    "dofs": 3666,
+    "path": "resident",
+    "seconds": 3.265046800000164,
+    "setup_seconds": 0.0
+  }
+]
