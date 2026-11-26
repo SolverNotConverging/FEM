@@ -17,7 +17,7 @@ from .meshing import FEMMesh
 @dataclass(frozen=True, slots=True)
 class ElectrostaticResult(ResultMixin):
     def plot(self, *, component: str | None = None, quantity: str = "real"):
-        """Return a potential, field, or mesh figure without opening a window."""
+        """Return a Matplotlib figure in 1D or 2D, or a PyVista plotter in 3D."""
         return self._result_api().plot_result(self, component=component, quantity=quantity)
 
     mesh: FEMMesh
@@ -61,7 +61,10 @@ class ElectrostaticResult(ResultMixin):
 
     @property
     def metadata(self):
-        return MappingProxyType({"time_convention": "static", "field_locations": {"potential": "node", "electric_field": "node", "element_electric_field": "cell"}})
+        return MappingProxyType({"time_convention": "static", "field_locations": {
+            "potential": "node", "electric_field": "node", "displacement_field": "node",
+            "element_electric_field": "cell", "element_displacement_field": "cell",
+        }})
 
     @property
     def solve_info(self):
@@ -74,6 +77,10 @@ class ElectrostaticResult(ResultMixin):
     @property
     def adaptive_converged(self) -> bool:
         return bool(self.adaptive_history and self.adaptive_history[-1]["status"] == "tolerance")
+
+    @property
+    def dimension(self) -> int:
+        return self.mesh.nodes.shape[1]
 
     @property
     def coordinates(self) -> NDArray[np.float64]:

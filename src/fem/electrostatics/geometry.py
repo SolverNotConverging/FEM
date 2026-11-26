@@ -1,4 +1,4 @@
-"""Continuous 1D/2D geometry recorded before FEM discretization."""
+"""Continuous electrostatic geometry recorded before FEM discretization."""
 
 from __future__ import annotations
 
@@ -10,11 +10,13 @@ from typing import Protocol, TypeAlias
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+from fem.common.shapes import Shape as CommonShape
+
 from .exceptions import GeometryError
 
 
 FloatArray: TypeAlias = NDArray[np.float64]
-Shape: TypeAlias = "Interval | Rectangle | Circle | Polygon"
+Shape: TypeAlias = "Interval | Rectangle | Circle | Polygon | CommonShape"
 
 
 def _span(value: Sequence[float], name: str) -> tuple[float, float]:
@@ -235,10 +237,12 @@ class GeometryModel:
         x_span: tuple[float, float],
         y_span: tuple[float, float] | None,
         background: Permittivity,
+        z_span: tuple[float, float] | None = None,
     ) -> None:
         self.dim = dim
         self.x_span = _span(x_span, "domain x")
         self.y_span = None if dim == 1 else _span(y_span or (), "domain y")
+        self.z_span = _span(z_span or (), "domain z") if dim == 3 else None
         self.background = background
         self.materials: list[MaterialRegion] = []
         self.potentials: list[PotentialRegion] = []
@@ -271,6 +275,15 @@ class GeometryModel:
                 raise GeometryError("1D geometry requires Interval regions.")
             if shape.x[0] < self.x_span[0] or shape.x[1] > self.x_span[1]:
                 raise GeometryError("interval lies outside the solver domain.")
+            return
+        if self.dim == 3:
+            if not isinstance(shape, CommonShape) or shape.dimension != 3:
+                raise GeometryError("3D electrostatics requires a solid region.")
+            for (lo, hi), lower, upper in zip((self.x_span, self.y_span, self.z_span),
+                                               shape.bounds[::2], shape.bounds[1::2]):
+                tol = 1e-13 * max(1., hi - lo)
+                if lower < lo - tol or upper > hi + tol:
+                    raise GeometryError("shape lies outside the solver domain.")
             return
         if isinstance(shape, Interval):
             raise GeometryError("2D geometry requires Rectangle, Circle, or Polygon regions.")
@@ -308,6 +321,10 @@ class GeometryModel:
     ) -> PotentialRegion:
         if isinstance(shape, str):
             allowed = {"left", "right"} if self.dim == 1 else {"left", "right", "bottom", "top", "outer"}
+            if self.dim == 3:
+                allowed.update(("front", "back"))
+                shape = {"x-": "left", "x+": "right", "y-": "bottom", "y+": "top",
+                         "z-": "front", "z+": "back"}.get(shape.lower(), shape)
             if shape.lower() not in allowed:
                 raise GeometryError(f"unknown boundary selector {shape!r}; expected one of {sorted(allowed)}.")
             shape = shape.lower()
@@ -364,20 +381,14 @@ class GeometryModel:
         count = coordinates.shape[0]
         tags = np.ones(count, dtype=np.int32)
         for index, region in enumerate(self.materials, start=2):
-            if self.dim == 1:
-                mask = region.shape.contains(coordinates[:, 0])  # type: ignore[union-attr]
-            else:
-                mask = region.shape.contains(coordinates[:, 0], coordinates[:, 1])  # type: ignore[union-attr]
+            mask = region.shape.contains(*coordinates.T)
             tags[np.asarray(mask, dtype=bool)] = index
         return tags
 
     def charge_at(self, coordinates: FloatArray) -> FloatArray:
         values = np.zeros(coordinates.shape[0], dtype=float)
         for region in self.charges:
-            if self.dim == 1:
-                mask = region.shape.contains(coordinates[:, 0])  # type: ignore[union-attr]
-            else:
-                mask = region.shape.contains(coordinates[:, 0], coordinates[:, 1])  # type: ignore[union-attr]
+            mask = region.shape.contains(*coordinates.T)
             values[np.asarray(mask, dtype=bool)] = region.density
         return values
 

@@ -19,8 +19,11 @@ def field_views(result):
             views.append("Surface current")
         return views
     fields = ("Et", "Hz") if result.polarization == "TE" else ("Ez", "Ht")
-    return [f"{name.capitalize()} {field}" for name in COMPONENTS[:-1] for field in fields
-            if field.endswith("z") or result.scattered_transverse is not None] + ["RCS"]
+    available = [(name.capitalize(), field) for name in COMPONENTS[:-1] for field in fields
+                 if field.endswith("z") or result.scattered_transverse is not None]
+    views = [f"{name} {field}" for name, field in available]
+    vectors = [f"{name} {field[0]} vector" for name, field in available]
+    return views + vectors + ["RCS"]
 
 
 def rcs_surface(result):
@@ -59,6 +62,19 @@ def draw_3d(plotter, result, component, quantity, *, mesh_overlay=False, materia
         centers, vectors = surface_vector_samples(mesh.coordinates[result.current_facets],
                                                   result.surface_current_vertices)
         values, label, title = vectors.T, "|Js| (A/m)", component
+    elif result.dimension == 2:
+        field, symbol, _ = component.split()
+        transverse = symbol == ("E" if result.polarization == "TE" else "H")
+        if transverse:
+            xy = mesh.coordinates[mesh.elements].mean(axis=1)
+            vectors = getattr(result, f"{field.lower()}_transverse")
+            values = [*vectors.T, np.zeros(len(xy))]
+        else:
+            xy = mesh.coordinates
+            values = [np.zeros(len(xy)), np.zeros(len(xy)), getattr(result, field.lower())]
+        centers = np.column_stack((xy, np.zeros(len(xy))))
+        label = "|E| (V/m)" if symbol == "E" else "|H| (A/m)"
+        title = component
     else:
         centers = mesh.coordinates[mesh.elements].mean(axis=1)
         field, symbol = component.split()
@@ -84,7 +100,7 @@ def plot_result(result, *, component, quantity):
         raise ConfigurationError(f"Available views: {', '.join(views)}.")
     if component != "RCS" and quantity not in ("real", "imag", "magnitude"):
         raise ConfigurationError("Select real, imag, or magnitude.")
-    if result.dimension == 3:
+    if result.dimension == 3 or (component and component.endswith(" vector")):
         import pyvista as pv
         plotter = pv.Plotter()
         draw_3d(plotter, result, component or "Total E", quantity)

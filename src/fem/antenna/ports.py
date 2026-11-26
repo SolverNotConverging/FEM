@@ -189,7 +189,9 @@ class PortSection:
             projector = csr_matrix(np.linalg.inv(gram)) @ load.T
         except np.linalg.LinAlgError as exc:
             raise ConfigurationError(f"Singular modal basis at port {self.port.name!r}.") from exc
-        return load, projector, flux
+        profiles = np.zeros((len(magnetic), 3, *weights.shape), dtype=complex)
+        profiles[:, self.uv] = magnetic
+        return load, projector, flux, profiles
 
 
 @dataclass(frozen=True)

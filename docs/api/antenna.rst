@@ -424,7 +424,7 @@ Returns: the physical mesh.
 
 .. code-block:: python
 
-    AntennaSolver3D.solve(*, backend='auto', max_refinements=2, adaptive_tolerance=0.05)
+    AntennaSolver3D.solve(*, backend='auto', max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None)
 
 Adapt against all independent port excitations, then report their coherent superposition.
 
@@ -452,6 +452,16 @@ Adapt against all independent port excitations, then report their coherent super
      - Optional
      - ``0.05``
      - Relative discretization-residual stopping threshold.
+   * - ``max_elements``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Adaptive mesh element budget.
+   * - ``max_dofs``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Maximum field-space size on an adaptive candidate mesh before eliminating boundary DOFs.
 
 Returns: an AntennaResult.
 
@@ -460,7 +470,7 @@ Returns: an AntennaResult.
 
 .. code-block:: python
 
-    AntennaSolver3D.sweep(*, frequencies, backend='auto', max_refinements=2, adaptive_tolerance=0.05)
+    AntennaSolver3D.sweep(*, frequencies, backend='auto', max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None)
 
 Adapt at the highest frequency in hertz and reuse that mesh at every lower frequency.
 
@@ -493,6 +503,16 @@ Adapt at the highest frequency in hertz and reuse that mesh at every lower frequ
      - Optional
      - ``0.05``
      - Relative discretization-residual stopping threshold.
+   * - ``max_elements``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Adaptive mesh element budget.
+   * - ``max_dofs``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Maximum field-space size on an adaptive candidate mesh before eliminating boundary DOFs.
 
 Returns: an AntennaSweep.
 

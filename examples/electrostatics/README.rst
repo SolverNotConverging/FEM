@@ -19,6 +19,7 @@ substantially longer. 3D cases also require more memory.
 2. `1d_layered_capacitor.py <1d_layered_capacitor.py>`_ — Analytic energy for two dielectric layers. Single solve.
 3. `2d_parallel_plate_space_charge.py <2d_parallel_plate_space_charge.py>`_ — Uniform space charge and an analytic potential check. Single solve.
 4. `2d_embedded_electrode_anisotropic.py <2d_embedded_electrode_anisotropic.py>`_ — An embedded electrode and anisotropic dielectric. Single solve.
+5. `3d_layered_capacitor.py <3d_layered_capacitor.py>`_ — Two dielectric layers in a tetrahedral mesh. Compare the plate charge with the analytical capacitance, then select E or D to inspect field arrows.
 
 Run a script from this directory, or pass its path from the repository root.
 Scripts that save results use

@@ -194,6 +194,8 @@
         "add_rectangle",
         "add_circle",
         "add_polygon",
+        "add_box",
+        "add_sphere",
         "set_material",
         "set_shape",
         "set_potential",

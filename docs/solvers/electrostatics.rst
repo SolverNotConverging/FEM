@@ -13,7 +13,7 @@ the repository root::
 
     python examples/electrostatics/1d_parallel_plate_capacitor.py
 
-The default field basis is quadratic on line segments and triangles.
+The default field basis is quadratic on line segments, triangles and tetrahedra.
 Use ``mesh(element_order=1)`` to select linear elements. The solver integrates
 energy from the element gradients. Results expose potential and recovered
 fields at mesh vertices and the full finite-element ``potential_coefficients``.
@@ -68,11 +68,41 @@ The adaptive defaults are two refinements and a relative tolerance of 0.05.
 The example allows two adaptive refinements. Geometry edits invalidate
 ``mesh_data`` and ``result``; an automatic rebuild reuses explicit mesh settings.
 
-``show()`` opens a Matplotlib window that selects potential, cell fields and mesh.
+In 1D and 2D, ``show()`` opens a Matplotlib window that selects potential, cell fields and mesh.
 Select ``Et`` for electric-field arrows in V/m or ``Dt`` for displacement-field
 arrows in C/m². The arrows show signed cell values at element centres and use
 magnitude for colour. Both are also available through ``result.plot()``.
 Relative epsilon may be scalar, diagonal, or symmetric positive-definite.
+
+Three-dimensional capacitor
+---------------------------
+
+The two z faces of this dielectric slab are electrodes. The four remaining
+faces have zero normal displacement, giving the parallel-plate solution::
+
+    import fem
+
+    solver = fem.ElectrostaticSolver(dim=3, x_range=.006, y_range=.008, z_range=.004,
+                                     background_material=fem.Material(epsilon=4.),
+                                     outer_potential=None)
+    solver.set_potential(geometry="z-", potential=0., name="ground")
+    solver.set_potential(geometry="z+", potential=3., name="drive")
+    result = solver.solve()
+    print(result.conductor_charge("drive"), result.energy)  # coulombs, joules
+    result.show()
+
+Use ``x-``, ``x+``, ``y-``, ``y+``, ``z-`` and ``z+`` for named faces.
+Solid dielectric, charge and electrode regions use the same CAD geometry as
+the tetrahedral mesh. For an embedded conductor, pass a PEC geometry handle
+to ``set_potential``.
+
+In the 3D viewer, select ``E`` for electric-field arrows in V/m or ``D`` for
+electric displacement in C/m². Each arrow uses its tetrahedron's field and
+is coloured by magnitude. Potential, Cartesian components and magnitudes
+appear on three interior slices. To open an individual view, use
+``result.plot(component="E").show()``. Magnetic field H is available in the
+electromagnetic solvers. The waveguide and periodic viewers offer full E and
+H vectors, including components perpendicular to the sampling plane.
 
 Persistence and API
 -------------------

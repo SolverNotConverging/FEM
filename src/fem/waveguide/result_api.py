@@ -41,6 +41,9 @@ def load_result(path):
 
 
 def plot_result(result, *, component=None, quantity="real", mode=0):
+    if component in ("E vector", "H vector"):
+        from fem.common.viewer import plot_mode_vector
+        return plot_mode_vector(result, mode, component, quantity)
     from .visualization import visualize
     from matplotlib.figure import Figure
     selected = result.mode(mode)

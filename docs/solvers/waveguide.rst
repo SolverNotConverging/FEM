@@ -57,9 +57,9 @@ Assign ``materials.PEC`` to a ``shapes.Circle`` for a circular conductor.
 intersects out-of-bounds geometry with the model domain.
 The benchmark demonstrates both conductors and the mesh/solve workflow.
 Its plots distinguish physical field errors, eigenproblem residuals, and the
-adaptive estimator. The current 2D waveguide backend globally remeshes by a
-factor of 1.5 when its estimator requests refinement; it does not mark local
-elements. The benchmark records budget exhaustion separately from convergence.
+adaptive estimator. Pass ``--field-target 0.08`` to compare local and uniform
+refinement at 8% relative electric-field error. The CSV records elapsed time,
+DOFs, field error, mesh quality and whether each run reached the target.
 
 1. Construct the solver with keyword arguments and physical lengths in metres.
 2. Add geometry, material properties, and boundary or excitation conditions.
@@ -90,8 +90,11 @@ The adaptive defaults are two refinements and a relative tolerance of 0.05.
 The example allows two adaptive refinements. Geometry edits invalidate
 ``mesh_data`` and ``result``; an automatic rebuild reuses explicit mesh settings.
 
-``show()`` opens the interactive viewer. ``plot()`` returns
-a Figure without opening a GUI. Both dimensions support scalar and diagonal
+``show()`` opens the interactive viewer. Select ``E vector`` or ``H vector``
+to rotate all three Cartesian field components, including the longitudinal
+component. For the same PyVista view in a script, use
+``result.plot(component="H vector", quantity="real").show()``.
+Other components return a Matplotlib Figure. Both dimensions support scalar and diagonal
 relative materials; the 2D solver also supports surface-impedance conductors.
 
 Select ``Et`` or ``Ht`` in the viewer for transverse electric (Ex, Ey) or magnetic

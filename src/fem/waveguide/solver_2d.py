@@ -24,6 +24,8 @@ from typing import Any, Literal
 
 from fem.common.discretization import DEFAULT_QUADRATURE_ORDER
 import numpy as np
+from fem.adaptivity._budget import check_candidate
+from fem.common._cell_material import CellMaterial
 from numpy.typing import ArrayLike, NDArray
 
 from .assembly import (
@@ -383,11 +385,12 @@ class ModeSolver2D(WaveguideScene2D, ModalSolverMixin):
         item = self.geometry.background
         epsilon = np.asarray(item.eps_r, dtype=np.complex128)
         permeability = np.asarray(item.mu_r, dtype=np.complex128)
-        return float(np.sqrt(np.max(np.abs(epsilon * permeability))))
+        return float(np.sqrt(np.max(np.abs(epsilon)) * np.max(np.abs(permeability))))
 
     def _mesh_impl(
         self,
         *,
+        geometry_tolerance: float | None = None,
         max_element_size: float | None = None,
         resolution: tuple[int, int] | None = None,
         wavelength_elements: int = 4,
@@ -421,6 +424,7 @@ class ModeSolver2D(WaveguideScene2D, ModalSolverMixin):
             element_order=element_order,
             quadrature_order=quadrature_order,
             refinement_scale=1.0,
+            geometry_tolerance=geometry_tolerance,
         )
 
     def _discretize(
@@ -437,6 +441,8 @@ class ModeSolver2D(WaveguideScene2D, ModalSolverMixin):
         element_order: int,
         quadrature_order: int,
         refinement_scale: float,
+        geometry_tolerance: float | None = None,
+        adaptive_sizes=None,
     ) -> FEMMesh2D:
 
         wavelength_count = _positive_integer(
@@ -501,6 +507,8 @@ class ModeSolver2D(WaveguideScene2D, ModalSolverMixin):
 
         mesh_data = discretize_2d(
             self.geometry,
+            adaptive_sizes=adaptive_sizes,
+            geometry_tolerance=geometry_tolerance,
             max_element_size=maximum,
             resolution=resolution,
             element_order=order,
@@ -513,6 +521,7 @@ class ModeSolver2D(WaveguideScene2D, ModalSolverMixin):
             boundary_refinement_width=boundary_width,
             _refinement_scale=refinement_scale,
         )
+        check_candidate(self, mesh_data.mesh, order, mixed=True)
         system = self._assemble_mesh(mesh_data, order, quadrature)
         self._invalidate_solution()
         self._mesh_data = mesh_data
@@ -520,6 +529,7 @@ class ModeSolver2D(WaveguideScene2D, ModalSolverMixin):
         self._discretized_revision = self.geometry.revision
         self._discretization_settings = {
             "max_element_size": maximum,
+            "geometry_tolerance": geometry_tolerance,
             "resolution": resolution,
             "wavelength_elements": wavelength_count,
             "material_aware": bool(material_aware),
@@ -569,11 +579,7 @@ class ModeSolver2D(WaveguideScene2D, ModalSolverMixin):
                     validate_surface_impedance(boundary_region.impedance),
                 )
             )
-        evaluator = (
-            self.geometry.transformed_material_at
-            if self.geometry.pmls
-            else self.geometry.material_at
-        )
+        evaluator = CellMaterial(self.geometry, mesh_data.element_tags)
         return assemble_mode_system_2d(
             mesh_data.mesh,
             frequency=self.frequency,
@@ -638,6 +644,7 @@ class ModeSolver2D(WaveguideScene2D, ModalSolverMixin):
             boundary_refinement_width=settings["boundary_refinement_width"],  # type: ignore[arg-type]
             element_order=int(settings["element_order"]),
             quadrature_order=int(settings["quadrature_order"]),
+            geometry_tolerance=settings["geometry_tolerance"],
             refinement_scale=float(settings["refinement_scale"]) / density_factor,
         )
 
@@ -658,7 +665,8 @@ class ModeSolver2D(WaveguideScene2D, ModalSolverMixin):
     def _default_guess(self, system: ModeFEMSystem2D) -> complex:
         coordinates = system.basis.global_coordinates() / self.k0
         epsilon, mu = evaluate_material(
-            self.geometry.material_at, coordinates[0], coordinates[1]
+            (system.material_at.bulk if isinstance(system.material_at, CellMaterial) else system.material_at),
+            coordinates[0], coordinates[1]
         )
         index_squared = epsilon * mu
         candidate = index_squared.reshape(3, -1)
@@ -700,6 +708,8 @@ class ModeSolver2D(WaveguideScene2D, ModalSolverMixin):
             system.material_at, coordinates[0], coordinates[1]
         )
         inv_mu = 1.0 / mu
+        if isinstance(system.material_at, CellMaterial):
+            epsilon, mu = system.material_at.bulk(*coordinates)
         ex, ey = et[0], et[1]
         curl_x = grad_ez[1] + 1j * neff * ey
         curl_y = -1j * neff * ex - grad_ez[0]
@@ -865,7 +875,7 @@ class ModeSolver2D(WaveguideScene2D, ModalSolverMixin):
             return direction in ("forward", "right-decaying")
         return direction in ("backward", "left-decaying")
 
-    def solve(self, *, neff_guess: complex | None=None, num_modes: int=4, direction: Direction='forward', eigensolver_tolerance: float=1e-10, residual_tolerance: float=1e-08, divergence_tolerance: float=1e-07, propagation_ratio_tolerance: float=0.001, dense_linearization_limit: int=700, backend: str="auto", max_refinements: int=2, adaptive_tolerance: float=0.05, track_modes: bool=False, track_options: Mapping[str, Any] | None=None):
+    def solve(self, *, neff_guess: complex | None=None, num_modes: int=4, direction: Direction='forward', eigensolver_tolerance: float=1e-10, residual_tolerance: float=1e-08, divergence_tolerance: float=1e-07, propagation_ratio_tolerance: float=0.001, dense_linearization_limit: int=700, backend: str="auto", max_refinements: int=2, adaptive_tolerance: float=0.05, max_elements: int | None=None, max_dofs: int | None=None, track_modes: bool=False, track_options: Mapping[str, Any] | None=None):
         """Solve modes, optionally identifying symmetry sectors and tracking fields.
 
         ``track_modes=True`` retains identities across solves/remeshing until
@@ -880,7 +890,7 @@ class ModeSolver2D(WaveguideScene2D, ModalSolverMixin):
         backend = resolve_eigen_backend(backend)
         from .adaptive import solve_2d
         options = {'neff_guess': neff_guess, 'num_modes': num_modes, 'direction': direction, 'eigensolver_tolerance': eigensolver_tolerance, 'residual_tolerance': residual_tolerance, 'divergence_tolerance': divergence_tolerance, 'propagation_ratio_tolerance': propagation_ratio_tolerance, 'dense_linearization_limit': dense_linearization_limit, 'backend': backend, 'track_modes': track_modes, **tracking}
-        return self._finish_result(solve_2d(self, (), options, max_refinements, adaptive_tolerance))
+        return self._finish_result(solve_2d(self, (), options, max_refinements, adaptive_tolerance, max_elements, max_dofs))
 
 
     def _solve_once(
@@ -1102,9 +1112,9 @@ class ModeSolver2D(WaveguideScene2D, ModalSolverMixin):
             )
         return result
 
-    def mesh(self, *, max_element_size: float | None=None, resolution: tuple[int, int] | None=None, wavelength_elements: int=4, material_aware: bool=True, interface_refinement: float | None=0.7, interface_refinement_width: float | None=None, boundary_refinement: float | None=0.5, boundary_refinement_width: float | None=None, element_order: int=2, quadrature_order: int=DEFAULT_QUADRATURE_ORDER):
+    def mesh(self, *, geometry_tolerance: float | None=None, max_element_size: float | None=None, resolution: tuple[int, int] | None=None, wavelength_elements: int=4, material_aware: bool=True, interface_refinement: float | None=0.7, interface_refinement_width: float | None=None, boundary_refinement: float | None=0.5, boundary_refinement_width: float | None=None, element_order: int=2, quadrature_order: int=DEFAULT_QUADRATURE_ORDER):
         """Build the initial mesh; solve() may subsequently refine it."""
-        settings = {'max_element_size': max_element_size, 'resolution': resolution, 'wavelength_elements': wavelength_elements, 'material_aware': material_aware, 'interface_refinement': interface_refinement, 'interface_refinement_width': interface_refinement_width, 'boundary_refinement': boundary_refinement, 'boundary_refinement_width': boundary_refinement_width, 'element_order': element_order, 'quadrature_order': quadrature_order}
+        settings = {'geometry_tolerance': geometry_tolerance, 'max_element_size': max_element_size, 'resolution': resolution, 'wavelength_elements': wavelength_elements, 'material_aware': material_aware, 'interface_refinement': interface_refinement, 'interface_refinement_width': interface_refinement_width, 'boundary_refinement': boundary_refinement, 'boundary_refinement_width': boundary_refinement_width, 'element_order': element_order, 'quadrature_order': quadrature_order}
         mesh = self._mesh_impl(**settings)
         self._mesh_settings = settings
         self._result = None

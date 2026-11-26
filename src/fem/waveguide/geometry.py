@@ -346,8 +346,12 @@ class GeometryModel1D(_GeometryBase):
         return eps.reshape((3, *coordinates.shape)), mu.reshape((3, *coordinates.shape))
 
     def transformed_material_at(self, x: ArrayLike) -> tuple[NDArray[np.complex128], NDArray[np.complex128]]:
+        eps, mu = self.material_at(x)
+        factors = self.pml_factors(x)
+        return factors * eps, factors * mu
+
+    def pml_factors(self, x):
         coordinates = np.asarray(x, dtype=float)
-        eps, mu = self.material_at(coordinates)
         sx = np.ones(coordinates.shape, dtype=np.complex128)
         for pml in self.pmls:
             if pml.direction in ("x-", "x", "all"):
@@ -358,8 +362,7 @@ class GeometryModel1D(_GeometryBase):
                 sx *= pml.stretch(
                     np.maximum(coordinates - (self.x_span[1] - pml.thickness), 0.0)
                 )
-        factors = np.stack((1.0 / sx, sx, sx))
-        return factors * eps, factors * mu
+        return np.stack((1.0 / sx, sx, sx))
 
 
 class GeometryModel2D(_GeometryBase):
@@ -479,8 +482,12 @@ class GeometryModel2D(_GeometryBase):
         return eps, mu
 
     def transformed_material_at(self, x: ArrayLike, y: ArrayLike) -> tuple[NDArray[np.complex128], NDArray[np.complex128]]:
+        eps, mu = self.material_at(x, y)
+        factors = self.pml_factors(x, y)
+        return factors * eps, factors * mu
+
+    def pml_factors(self, x, y):
         xa, ya = np.broadcast_arrays(np.asarray(x, dtype=float), np.asarray(y, dtype=float))
-        eps, mu = self.material_at(xa, ya)
         sx = np.ones(xa.shape, dtype=np.complex128)
         sy = np.ones(ya.shape, dtype=np.complex128)
         for pml in self.pmls:
@@ -493,8 +500,7 @@ class GeometryModel2D(_GeometryBase):
                 sy *= pml.stretch(np.maximum(self.y_span[0] + pml.thickness - ya, 0.0))
             if direction in ("y+", "y", "all"):
                 sy *= pml.stretch(np.maximum(ya - (self.y_span[1] - pml.thickness), 0.0))
-        factors = np.stack((sy / sx, sx / sy, sx * sy))
-        return factors * eps, factors * mu
+        return np.stack((sy / sx, sx / sy, sx * sy))
 
     def pml_interfaces(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
         xs: set[float] = set()

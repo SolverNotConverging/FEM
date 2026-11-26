@@ -7,6 +7,7 @@ from threading import Lock
 from uuid import uuid4
 
 import numpy as np
+from fem.common._mesh_sizing import append_size_view, curve_size_fields, size_view
 from numpy.typing import NDArray
 from skfem import MeshLine, MeshTri
 
@@ -39,6 +40,11 @@ class FEMMesh1D:
     geometry_revision: int
     element_tags: NDArray[np.int32] | None = None
     physical_names: dict[int, str] | None = None
+
+
+    def __post_init__(self):
+        if self.element_tags is not None and len(self.element_tags) != self.mesh.nelements:
+            raise MeshError("Expected one material tag per interval.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -280,62 +286,11 @@ def _surface_curves(
     return curves
 
 
-def _facet_matches_shape(
-    shape: object,
-    endpoints: NDArray[np.float64],
-    midpoint: NDArray[np.float64],
-    tolerance: float,
-) -> bool:
-    """Return whether a mesh boundary facet belongs to a placed solid.
-
-    Testing only the chord midpoint is insufficient for the inner wall of an
-    annulus: the midpoint lies just inside the inner disk and therefore outside
-    the annular solid.  OCC mesh nodes on a circular curve retain the exact
-    radius, so endpoint radii give a stable classification for both walls.
-    """
-
-    if bool(shape.contains(midpoint[0], midpoint[1])):  # type: ignore[union-attr]
-        return True
-    # A Boolean difference excludes the closed boundary of its tool. Probe
-    # either side of a straight facet to classify the solid's exposed wall,
-    # without treating points in the interior of the hole as conductor.
-    tangent = endpoints[1] - endpoints[0]
-    length = float(np.linalg.norm(tangent))
-    if length > 0:
-        normal = np.asarray((-tangent[1], tangent[0])) / length
-        probes = midpoint[None, :] + np.asarray((-1., 1.))[:, None] * tolerance * normal
-        if np.any(shape.contains(probes[:, 0], probes[:, 1])):  # type: ignore[union-attr]
-            return True
-    if isinstance(shape, Rectangle):
-        return bool(
-            shape.x[0] - tolerance <= midpoint[0] <= shape.x[1] + tolerance
-            and shape.y[0] - tolerance <= midpoint[1] <= shape.y[1] + tolerance
-        )
-    if isinstance(shape, Circle):
-        center = np.asarray(shape.center, dtype=float)
-        radii = np.linalg.norm(endpoints - center, axis=1)
-        targets = [shape.radius]
-        if shape.inner_radius is not None:
-            targets.append(shape.inner_radius)
-        return any(np.all(np.abs(radii - radius) <= tolerance) for radius in targets)
-    if isinstance(shape, Polygon):
-        point = midpoint
-        vertices = np.asarray(shape.points, dtype=float)
-        for index in range(len(vertices)):
-            start = vertices[index - 1]
-            end = vertices[index]
-            delta = end - start
-            fraction = float(
-                np.clip(np.dot(point - start, delta) / np.dot(delta, delta), 0.0, 1.0)
-            )
-            if np.linalg.norm(point - (start + fraction * delta)) <= tolerance:
-                return True
-    return False
-
-
 def discretize_2d(
     geometry: GeometryModel2D,
     *,
+    geometry_tolerance: float | None = None,
+    adaptive_sizes=None,
     max_element_size: float | None = None,
     resolution: tuple[int, int] | None = None,
     element_order: int = 1,
@@ -493,6 +448,7 @@ def discretize_2d(
         previous_model = "" if owned else str(gmsh.model.getCurrent())
         model_name = f"fem_modes_{uuid4().hex}"
         model_added = False
+        view = None
         try:
             gmsh.option.setNumber("General.Terminal", 0)
             gmsh.model.add(model_name)
@@ -571,6 +527,7 @@ def discretize_2d(
             solve_surfaces: list[int] = []
             excluded_surfaces: list[int] = []
             surface_material_tags: dict[int, int] = {}
+            conductor_curves = {}
             surface_centers: dict[int, tuple[float, float]] = {}
             physical_names = {1: "background"}
             for index, region in enumerate(geometry.regions, start=2):
@@ -602,6 +559,8 @@ def discretize_2d(
                         f"one boundary object or make them merely adjacent: {names}."
                     )
                 if boundary_owners:
+                    for _, curve in gmsh.model.getBoundary([(2, entity)], oriented=False):
+                        conductor_curves[curve] = boundary_owners[0]
                     excluded_surfaces.append(entity)
                     continue
                 tag = 1
@@ -853,6 +812,11 @@ def discretize_2d(
                     sizing_fields.append(threshold)
                     target_sizes.append(target)
 
+            sizing_fields.extend(curve_size_fields(gmsh, geometry_tolerance, scale, maximum))
+            if adaptive_sizes is not None:
+                target_sizes.append(float(np.min(adaptive_sizes[1])))
+                view = size_view(gmsh, adaptive_sizes, (xmin, ymin), scale)
+                append_size_view(gmsh, view, sizing_fields)
             if len(sizing_fields) == 1:
                 gmsh.model.mesh.field.setAsBackgroundMesh(sizing_fields[0])
             elif sizing_fields:
@@ -865,11 +829,11 @@ def discretize_2d(
             gmsh.option.setNumber("Mesh.MeshSizeMax", maximum * scale)
             gmsh.option.setNumber(
                 "Mesh.MeshSizeMin",
-                max(min(target_sizes) * scale * 0.05, 1e-12),
+                1e-12 if geometry_tolerance is not None else max(min(target_sizes) * scale * 0.05, 1e-12),
             )
             gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
             gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
-            gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+            gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 24)
             # Gmsh's Delaunay algorithm handles the large gradients in
             # distance/threshold background fields more robustly than the
             # default Frontal-Delaunay algorithm.
@@ -904,11 +868,22 @@ def discretize_2d(
                 )
             except KeyError as exc:
                 raise MeshError("Gmsh lost a material surface association during meshing.") from exc
+            exposed = gmsh.model.getBoundary([(2, entity) for entity in solve_surfaces],
+                                             combined=True, oriented=False)
+            boundary_edges = {}
+            for _, curve in exposed:
+                owner = conductor_curves.get(curve)
+                _, lines = gmsh.model.mesh.getElementsByType(1, curve)
+                for a, b in np.asarray(lines).reshape(-1, 2):
+                    edge = tuple(sorted((lookup[int(a)], lookup[int(b)])))
+                    boundary_edges[edge] = owner
         except MeshError:
             raise
         except Exception as exc:
             raise MeshError(f"Gmsh failed to generate the FEM mode mesh: {exc}") from exc
         finally:
+            if view is not None:
+                gmsh.view.remove(view)
             if owned:
                 gmsh.finalize()
             else:
@@ -927,40 +902,15 @@ def discretize_2d(
                         pass
 
     mesh = MeshTri(points.T, triangles.T)
-    boundary_indices = np.asarray(mesh.boundary_facets(), dtype=np.int64)
-    facets = mesh.facets[:, boundary_indices].T
-    midpoints = points[facets].mean(axis=1)
     kinds: dict[str, list[int]] = {"outer_pec": [], "outer_pmc": []}
-    tolerance = 1e-8 * max(width, height)
-    for local_index, facet_index in enumerate(boundary_indices):
-        px, py = midpoints[local_index]
-        external = (
-            abs(px - xmin) <= tolerance
-            or abs(px - xmax) <= tolerance
-            or abs(py - ymin) <= tolerance
-            or abs(py - ymax) <= tolerance
-        )
-        if external:
-            kinds[f"outer_{geometry.outer_boundary}"].append(int(facet_index))
-            continue
-        matched = False
-        for boundary in reversed(geometry.boundaries):
-            if _facet_matches_shape(
-                boundary.shape,
-                points[facets[local_index]],
-                midpoints[local_index],
-                tolerance,
-            ):
-                kinds.setdefault(boundary.name, []).append(int(facet_index))
-                kinds.setdefault(boundary.kind, []).append(int(facet_index))
-                matched = True
-                break
-        if not matched:
-            raise MeshError(
-                "An internal boundary facet could not be associated with its "
-                "PEC, PMC, or impedance geometry. Refine the geometry or report "
-                f"the facet near ({px:.9g}, {py:.9g})."
-            )
+    for facet in mesh.boundary_facets():
+        edge = tuple(sorted(mesh.facets[:, facet]))
+        if edge not in boundary_edges:
+            raise MeshError(f"Boundary facet {facet} has no exposed OCC curve.")
+        owner = boundary_edges[edge]
+        names = {f"outer_{geometry.outer_boundary}"} if owner is None else {owner.name, owner.kind}
+        for name in names:
+            kinds.setdefault(name, []).append(int(facet))
 
     hmin, hmax = _edge_extrema(points, triangles)
     return FEMMesh2D(

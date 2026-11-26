@@ -38,6 +38,21 @@ def draw_vectors(ax, points, values, domain, *, vertical_axis, quantity, label,
         ax.figure.colorbar(arrows, ax=ax, cax=colorbar_axes, label=label)
 
 
+def cell_vector_samples(fields, points, values):
+    """Average quadrature samples for display while retaining cell ownership."""
+    owners = getattr(fields, "sample_element_indices", None)
+    if owners is None:
+        owners = fields.metadata.get("sample_element_indices")
+    if owners is not None:
+        # Average each cell's own quadrature samples without crossing interfaces.
+        _, owners = np.unique(np.asarray(owners).ravel(), return_inverse=True)
+        counts = np.bincount(owners)
+        points = np.column_stack([np.bincount(owners, weights=v) / counts for v in points.T])
+        values = np.array([(np.bincount(owners, weights=v.real)
+                            + 1j * np.bincount(owners, weights=v.imag)) / counts for v in values])
+    return points, values
+
+
 def draw_mode_vectors(ax, mode, component, quantity, *, axes, colorbar=True, cmap="viridis"):
     fields = mode.fields
     points = fields.coordinates
@@ -50,16 +65,7 @@ def draw_mode_vectors(ax, mode, component, quantity, *, axes, colorbar=True, cma
         name = component[0] + axis
         if name in fields.components:
             values[i] = fields.component(name).ravel()
-    owners = getattr(fields, "sample_element_indices", None)
-    if owners is None:
-        owners = fields.metadata.get("sample_element_indices")
-    if owners is not None:
-        # Average each cell's own quadrature samples without crossing interfaces.
-        _, owners = np.unique(np.asarray(owners).ravel(), return_inverse=True)
-        counts = np.bincount(owners)
-        points = np.column_stack([np.bincount(owners, weights=v) / counts for v in points.T])
-        values = np.array([(np.bincount(owners, weights=v.real)
-                            + 1j * np.bincount(owners, weights=v.imag)) / counts for v in values])
+    points, values = cell_vector_samples(fields, points, values)
     unit = "V/m" if component == "Et" else "A/m"
     draw_vectors(ax, points, values, domain, vertical_axis=axes[1], quantity=quantity,
                  label=f"|{component}| ({unit})", colorbar=colorbar, cmap=cmap)

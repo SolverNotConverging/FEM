@@ -240,7 +240,7 @@ class AntennaSolver3D(RadiationBoxSolver):
         fixed = basis.get_dofs(facets=np.union1d(remaining, self._pml_wall)).all()
         return basis, basis.complement_dofs(fixed), sections, conductors
 
-    def _adapt_frequency(self, frequency, selected, max_refinements, adaptive_tolerance):
+    def _adapt_frequency(self, frequency, selected, max_refinements, adaptive_tolerance, max_elements=None, max_dofs=None):
         prepared = None
 
         def solve_once():
@@ -251,17 +251,18 @@ class AntennaSolver3D(RadiationBoxSolver):
 
         result = run_adaptive(self, solve_once, lambda result: self._estimate, self._refine_driven,
                               max_refinements=max_refinements, adaptive_tolerance=adaptive_tolerance,
+                              max_elements=max_elements, max_dofs=max_dofs,
                               error_type=ConfigurationError)
         return result, prepared
 
-    def solve(self, *, backend="auto", max_refinements=2, adaptive_tolerance=0.05):
+    def solve(self, *, backend="auto", max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None):
         """Adapt against all independent port excitations, then report their coherent superposition."""
         self.result, _ = self._adapt_frequency(
-            self.frequency, resolve_backend(backend), max_refinements, adaptive_tolerance
+            self.frequency, resolve_backend(backend), max_refinements, adaptive_tolerance, max_elements, max_dofs
         )
         return self.result
 
-    def sweep(self, *, frequencies, backend="auto", max_refinements=2, adaptive_tolerance=0.05):
+    def sweep(self, *, frequencies, backend="auto", max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None):
         """Adapt at the highest frequency in hertz and reuse that mesh at every lower frequency."""
         fs = real_array(frequencies, "frequencies")
         if fs.ndim != 1 or not len(fs) or (fs <= 0).any() or (np.diff(fs) <= 0).any():
@@ -270,7 +271,7 @@ class AntennaSolver3D(RadiationBoxSolver):
         lower = []
         for frequency in frequency_steps(fs):
             if frequency == fs[-1]:
-                highest, prepared = self._adapt_frequency(frequency, selected, max_refinements, adaptive_tolerance)
+                highest, prepared = self._adapt_frequency(frequency, selected, max_refinements, adaptive_tolerance, max_elements, max_dofs)
                 highest.metadata["mesh_adaptation_frequency"] = frequency
             else:
                 case = self._solve(frequency, selected, *prepared)
@@ -303,6 +304,7 @@ class AntennaSolver3D(RadiationBoxSolver):
         matrix = asm(interior, basis) + shell_matrix(
             basis, len(tags), self._physical_ranges(self._pml_profiles), self._pml_profiles, k
         )
+        natural_walls = []
         for owner, facets in self._faces.items():
             material = self._regions[owner - 1][1]
             if material == materials.PEC:
@@ -313,6 +315,7 @@ class AntennaSolver3D(RadiationBoxSolver):
             ratio = ETA_0 / material.at_frequency(frequency=frequency)
             face = FacetBasis(self._mesh, basis.elem, facets=facets, intorder=quadrature)
             matrix += ratio * asm(impedance, face)
+            natural_walls.append((facets, ratio))
 
         ports = tuple(self._ports.values())
         rhs = np.zeros((basis.N, len(ports)), dtype=complex)
@@ -320,6 +323,7 @@ class AntennaSolver3D(RadiationBoxSolver):
         port_modes, flux_operators = {}, {}
         loads, traces = [], []
         factor = 1j * k * ETA_0
+        port_profiles = {}
         for col, port in enumerate(ports):
             section = sections[port.name]
             if isinstance(port, DiscretePort):
@@ -336,7 +340,8 @@ class AntennaSolver3D(RadiationBoxSolver):
                     f"{port.name} mode {port.mode} is below cutoff at {frequency:g} Hz."
                 )
             port_modes[port.name] = modes
-            load, projector, flux = section.operators(modes)
+            load, projector, flux, profiles = section.operators(modes)
+            port_profiles[col] = profiles
             loads.append(factor * load)
             traces.append(projector)
             rhs[:, col] = 2 * factor * load[:, port.mode - 1].toarray().ravel()
@@ -377,14 +382,35 @@ class AntennaSolver3D(RadiationBoxSolver):
         if estimate:
             combined = np.zeros(len(tags))
             worst = 0.
-            for column in solutions.T:
+            worst_components = {}
+            for excitation, column in enumerate(solutions.T):
                 coeff[free] = column
-                indicators, residual = driven_residual(basis, coeff, eps, 1 / mu, k, quadrature)
+                port_traces, gap_sources = [], []
+                for col, port in enumerate(ports):
+                    if isinstance(port, DiscretePort):
+                        cells = self.mesh_data.metadata["port_gap_cells"][port.name]
+                        axis = "xyz".index(port.axis)
+                        span = np.diff(np.asarray(port.bounds).reshape(3, 2)[axis]).item()
+                        area = basis.dx[cells].sum() / span
+                        voltage = (sections[port.name].T @ coeff).item()
+                        drive = 2 * np.sqrt(2 * port.impedance) if col == excitation else 0.
+                        source = 1j * ETA_0 * (drive - voltage) / (port.impedance * area)
+                        gap_sources.append((cells, axis, source))
+                    else:
+                        amplitudes = flux_operators[col][0] @ coeff
+                        if col == excitation:
+                            amplitudes[port.mode - 1] -= 2
+                        prescribed = 1j * ETA_0 * np.einsum("m,mifq->ifq", amplitudes, port_profiles[col])
+                        port_traces.append((sections[port.name].face, prescribed))
+                indicators, residual, components = driven_residual(
+                    basis, coeff, eps, 1 / mu, k, quadrature, walls=natural_walls,
+                    gap_sources=gap_sources, port_traces=port_traces)
                 if not np.isfinite(residual):
                     raise SolverError("Nonfinite adaptive residual for an antenna port excitation.")
                 combined = np.maximum(combined, indicators)
-                worst = max(worst, residual)
-            self._estimate = combined, worst
+                if residual >= worst:
+                    worst, worst_components = residual, components
+            self._estimate = combined, worst, worst_components
         coeff[free] = solutions @ incident
         channels = tuple((p.name, p.mode) for p in ports)
         modal_s = {}

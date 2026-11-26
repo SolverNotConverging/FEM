@@ -22,6 +22,13 @@ class _Conductor:
 
 
 class ElectrostaticSceneMixin(SceneMixin):
+    def _native_shape(self, shape):
+        if isinstance(shape, shapes.Shape) and shape.dimension != self.dim:
+            raise GeometryError("Shape must match the electrostatic dimension.")
+        if self.dim == 3:
+            return shape
+        return native_shape(shape, native)
+
     def _prepare_geometry(self, record):
         shape = record.shape
         if not isinstance(shape, shapes.Shape) or shape.dimension != self.dim:
@@ -30,9 +37,11 @@ class ElectrostaticSceneMixin(SceneMixin):
             spans = (self.x_range,) if self.dim == 1 else (self.x_range, self.y_range)
             if self.dim == 1:
                 shape = shapes.Interval(bounds=(max(shape.bounds[0], spans[0][0]), min(shape.bounds[1], spans[0][1])))
+            elif self.dim == 3:
+                shape = shapes.Intersection(shapes=(shape, shapes.Box(bounds=(*spans, self.z_range))))
             else:
                 shape = shapes.Intersection(shapes=(shape, shapes.Rectangle(bounds=spans)))
-        shape = native_shape(shape, native)
+        shape = self._native_shape(shape)
         self.geometry.validate_shape(shape)
         if isinstance(record.material, materials.Material):
             return shape, native.Permittivity.from_input(static_epsilon(record.material, self.dim), self.dim)
@@ -90,7 +99,7 @@ class ElectrostaticSceneMixin(SceneMixin):
                 raise ConfigurationError('Potential must be finite.')
             self.geometry.potentials[:] = [p for p in self.geometry.potentials if p.name != handle.name]
             return self.geometry.add_potential(handle.shape, potential, name=handle.name)
-        shape = geometry if isinstance(geometry, str) else native_shape(geometry, native)
+        shape = geometry if isinstance(geometry, str) else self._native_shape(geometry)
         return self.geometry.add_potential(shape, potential, name=name)
 
     def add_charge_density(self, *, geometry, density, name=None):
@@ -101,12 +110,26 @@ class ElectrostaticSceneMixin(SceneMixin):
                 raise ConfigurationError('Volume charge cannot be assigned inside a PEC conductor.')
             shape = handle.shape
         else:
-            shape = native_shape(geometry, native)
+            shape = self._native_shape(geometry)
         return self.geometry.add_charge(shape, density, name=name)
 
     def add_layer(self, *, x_range, material, name=None, clip=False):
+        if self.dim == 3:
+            return self.add_box(x_range=x_range, y_range=self.y_range, z_range=self.z_range,
+                                material=material, name=name, clip=clip)
         shape = shapes.Interval(bounds=x_range) if self.dim == 1 else shapes.Rectangle(bounds=(x_range, self.y_range))
         return self.add_geometry(shape=shape, material=material, name=name, clip=clip)
+
+    def add_box(self, *, x_range, y_range, z_range, material, name=None, clip=False):
+        """Assign a material to an axis-aligned solid box."""
+        return self.add_geometry(shape=shapes.Box(bounds=(x_range, y_range, z_range)),
+                                 material=material, name=name, clip=clip)
+
+    def add_sphere(self, *, center, radius, material, name=None, clip=False):
+        """Assign a material to a solid sphere."""
+        return self.add_geometry(shape=shapes.Sphere(center=center, radius=radius),
+                                 material=material, name=name, clip=clip)
+
     def add_rectangle(self, *, x_range, y_range, material, name=None, clip=False):
         return self.add_geometry(shape=shapes.Rectangle(bounds=(x_range, y_range)), material=material, name=name, clip=clip)
     def add_circle(self, *, center, radius, material, name=None, clip=False):

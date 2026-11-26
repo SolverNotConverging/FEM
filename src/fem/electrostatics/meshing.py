@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import combinations
 from threading import Lock
 from types import MappingProxyType
 from uuid import uuid4
 
 import numpy as np
+from fem.common._mesh_sizing import append_size_view, curve_size_fields, size_view
 from numpy.typing import NDArray
 
 from .exceptions import MeshError
@@ -42,6 +44,21 @@ class FEMMesh:
     physical_names: dict[int, str]
     info: MeshInfo
     geometry_revision: int
+    has_curves: bool = False
+    charge_density: np.ndarray | None = None
+    potential_cells: dict[int, np.ndarray] | None = None
+
+    @property
+    def boundary_facets(self):
+        """Surfaces of embedded equipotential volumes for the 3D viewer."""
+        if self.nodes.shape[1] != 3 or not self.potential_cells:
+            return None
+        first, second = self.mesh.f2t
+        faces = np.zeros(len(first), dtype=bool)
+        for cells in self.potential_cells.values():
+            other = (second >= 0) & cells[np.maximum(second, 0)]
+            faces |= cells[first] != other
+        return {"pec": np.flatnonzero(faces)}
 
 
 def _positive(value: float, name: str) -> float:
@@ -76,13 +93,8 @@ def _import_gmsh() -> object:
 
 
 def _mesh_extrema(points: FloatArray, elements: IntArray) -> tuple[float, float]:
-    if elements.shape[1] == 2:
-        lengths = np.linalg.norm(points[elements[:, 1]] - points[elements[:, 0]], axis=1)
-    else:
-        pairs = np.concatenate(
-            (elements[:, [0, 1]], elements[:, [1, 2]], elements[:, [2, 0]])
-        )
-        lengths = np.linalg.norm(points[pairs[:, 1]] - points[pairs[:, 0]], axis=1)
+    lengths = np.stack([np.linalg.norm(points[elements[:, i]] - points[elements[:, j]], axis=1)
+                        for i, j in combinations(range(elements.shape[1]), 2)])
     return float(lengths.min()), float(lengths.max())
 
 
@@ -285,7 +297,7 @@ def discretize_1d(
     )
 
 
-def _add_occ_shape(gmsh: object, shape: object, origin: tuple[float, float], scale: float) -> tuple[int, int]:
+def _add_occ_shape(gmsh: object, shape: object, origin: np.ndarray, scale: float) -> tuple[int, int]:
     from fem.common.shapes import Shape
     from fem.common._occ import add_shape
     if isinstance(shape, Shape):
@@ -310,17 +322,18 @@ def _add_occ_shape(gmsh: object, shape: object, origin: tuple[float, float], sca
 
 def _add_distance_field(
     gmsh: object,
-    curves: list[int],
+    entities: list[int],
     target: float,
     maximum: float,
     transition: float,
     scale: float,
     fields: list[int],
+    facet_dim: int,
 ) -> None:
-    if not curves:
+    if not entities:
         return
     distance = gmsh.model.mesh.field.add("Distance")
-    gmsh.model.mesh.field.setNumbers(distance, "CurvesList", curves)
+    gmsh.model.mesh.field.setNumbers(distance, "CurvesList" if facet_dim == 1 else "SurfacesList", entities)
     threshold = gmsh.model.mesh.field.add("Threshold")
     gmsh.model.mesh.field.setNumber(threshold, "InField", distance)
     gmsh.model.mesh.field.setNumber(threshold, "SizeMin", target * scale)
@@ -330,9 +343,53 @@ def _add_distance_field(
     fields.append(threshold)
 
 
-def discretize_2d(
+def _fragment_regions(gmsh, geometry, spans, origin, scale):
+    """Track CAD descendants for materials, electrodes and space charge."""
+    from fem.common._occ import add_shape
+    from fem.common.shapes import Box
+    occ = gmsh.model.occ
+    dim = geometry.dim
+    shapes = list(dict.fromkeys(geometry.all_area_shapes()))
+    if dim == 2:
+        # Preserve the rectangular grid lines used by the planar geometry.
+        cuts = [set(span) for span in spans]
+        for shape in shapes:
+            if isinstance(shape, Rectangle):
+                cuts[0].update(shape.x)
+                cuts[1].update(shape.y)
+        xs, ys = map(sorted, cuts)
+        domain = [(2, occ.addRectangle((x-origin[0])*scale, (y-origin[1])*scale, 0.,
+                                        (x1-x)*scale, (y1-y)*scale))
+                  for x, x1 in zip(xs, xs[1:]) for y, y1 in zip(ys, ys[1:])]
+        tools = [shape for shape in shapes if not isinstance(shape, Rectangle)]
+    else:
+        domain = [add_shape(gmsh, Box(bounds=spans), origin, scale)]
+        tools = shapes
+    inputs = domain + [_add_occ_shape(gmsh, shape, origin, scale) for shape in tools]
+    descendants = [[inputs[0]]]
+    if len(inputs) > 1:
+        _, descendants = occ.fragment(inputs[:1], inputs[1:])
+        if len(descendants) != len(inputs):
+            raise MeshError("Gmsh returned incomplete OCC fragment provenance.")
+    occ.synchronize()
+    regions = {tag for parts in descendants[:len(domain)] for d, tag in parts if d == dim}
+    if not regions or regions != {tag for _, tag in gmsh.model.getEntities(dim)}:
+        raise MeshError("The fragmented CAD regions do not match the electrostatic domain.")
+    membership = {shape: {tag for d, tag in parts if d == dim and tag in regions}
+                  for shape, parts in zip(tools, descendants[len(domain):], strict=True)}
+    if dim == 2:
+        centers = {tag: np.asarray(occ.getCenterOfMass(dim, tag)[:dim])/scale + origin for tag in regions}
+        for shape in shapes:
+            if isinstance(shape, Rectangle):
+                membership[shape] = {tag for tag, pt in centers.items() if shape.contains(*pt)}
+    return sorted(regions), membership
+
+
+def discretize_simplices(
     geometry: GeometryModel,
     *,
+    adaptive_sizes=None,
+    geometry_tolerance: float | None = None,
     max_element_size: float,
     material_aware: bool = True,
     interface_refinement: float | None = 0.7,
@@ -340,10 +397,11 @@ def discretize_2d(
     interface_refinement_width: float | None = None,
     boundary_refinement_width: float | None = None,
 ) -> FEMMesh:
-    """Generate a conforming triangular mesh with high-Dk and boundary refinement."""
+    """Generate a tagged triangular or tetrahedral mesh with local size fields."""
 
-    if geometry.dim != 2 or geometry.y_span is None:
-        raise MeshError("discretize_2d requires 2D geometry.")
+    dim = geometry.dim
+    if dim not in (2, 3):
+        raise MeshError("A triangular or tetrahedral domain is required.")
     maximum = _positive(max_element_size, "max_element_size")
     interface_factor = _factor(interface_refinement, "interface_refinement")
     boundary_factor = _factor(boundary_refinement, "boundary_refinement")
@@ -357,111 +415,45 @@ def discretize_2d(
         raise MeshError("boundary_refinement_width requires boundary_refinement.")
 
     targets, names = _material_targets(geometry, maximum, bool(material_aware))
-    xmin, xmax = geometry.x_span
-    ymin, ymax = geometry.y_span
-    width, height = xmax - xmin, ymax - ymin
-    scale = 1.0 / max(width, height)
+    spans = (geometry.x_span, geometry.y_span, geometry.z_span)[:dim]
+    origin = np.array([lo for lo, _ in spans])
+    scale = 1.0 / max(hi - lo for lo, hi in spans)
     gmsh = _import_gmsh()
-    model_name = f"electrostatic_2d_{uuid4().hex}"
+    model_name = f"electrostatic_{dim}d_{uuid4().hex}"
+    element_type = 2 if dim == 2 else 4
 
     with _GMSH_LOCK:
         owned, previous_model, previous_options = _gmsh_session(gmsh)
         model_added = False
+        view = None
         try:
             gmsh.option.setNumber("General.Terminal", 0)
             gmsh.model.add(model_name)
             model_added = True
-            occ = gmsh.model.occ
 
-            xcuts = {xmin, xmax}
-            ycuts = {ymin, ymax}
-            shapes = geometry.all_area_shapes()
-            for shape in shapes:
-                if isinstance(shape, Rectangle):
-                    xcuts.update(shape.x)
-                    ycuts.update(shape.y)
-            xs = sorted(xcuts)
-            ys = sorted(ycuts)
-            cells = [
-                (
-                    2,
-                    occ.addRectangle(
-                        (xs[ix] - xmin) * scale,
-                        (ys[iy] - ymin) * scale,
-                        0.0,
-                        (xs[ix + 1] - xs[ix]) * scale,
-                        (ys[iy + 1] - ys[iy]) * scale,
-                    ),
-                )
-                for ix in range(len(xs) - 1)
-                for iy in range(len(ys) - 1)
-            ]
-            curved_shapes = list(
-                dict.fromkeys(shape for shape in shapes if not isinstance(shape, Rectangle))
-            )
-            curved = [
-                _add_occ_shape(gmsh, shape, (xmin, ymin), scale)
-                for shape in curved_shapes
-            ]
-            inputs = [*cells, *curved]
-            if len(inputs) > 1:
-                _, fragment_map = occ.fragment(
-                    [inputs[0]], inputs[1:], removeObject=True, removeTool=True
-                )
-                if len(fragment_map) != len(inputs):
-                    raise MeshError("Gmsh returned incomplete OCC fragment provenance.")
-                curved_membership = {
-                    shape: {
-                        int(entity)
-                        for dimension, entity in fragment_map[len(cells) + index]
-                        if dimension == 2
-                    }
-                    for index, shape in enumerate(curved_shapes)
-                }
-            else:
-                curved_membership = {}
-            occ.synchronize()
-
-            surfaces = [int(entity) for _, entity in gmsh.model.getEntities(2)]
-            if not surfaces:
-                raise MeshError("Gmsh produced no surfaces after geometry fragmentation.")
-            surface_centers: dict[int, tuple[float, float]] = {}
-            surface_tags: dict[int, int] = {}
-            surface_potentials: dict[int, tuple[int, ...]] = {}
-            for entity in surfaces:
-                center = occ.getCenterOfMass(2, entity)
-                x = center[0] / scale + xmin
-                y = center[1] / scale + ymin
-                surface_centers[entity] = (x, y)
-                material_tag = 1
-                for index, region in enumerate(geometry.materials, start=2):
-                    belongs = (
-                        bool(region.shape.contains(x, y))
-                        if isinstance(region.shape, Rectangle)
-                        else entity in curved_membership.get(region.shape, set())
-                    )
-                    if belongs:
-                        material_tag = index
-                surface_tags[entity] = material_tag
-                owners: list[int] = []
-                for potential in geometry.potentials:
-                    if isinstance(potential.shape, str):
-                        continue
-                    belongs = (
-                        bool(potential.shape.contains(x, y))
-                        if isinstance(potential.shape, Rectangle)
-                        else entity in curved_membership.get(potential.shape, set())
-                    )
-                    if belongs:
-                        owners.append(potential.id)
-                surface_potentials[entity] = tuple(owners)
+            regions, membership = _fragment_regions(gmsh, geometry, spans, origin, scale)
+            has_curves = any(gmsh.model.getType(dim - 1, tag) != ("Line" if dim == 2 else "Plane")
+                             for _, tag in gmsh.model.getEntities(dim - 1))
+            region_tags = dict.fromkeys(regions, 1)
+            region_potentials = {tag: [] for tag in regions}
+            region_charge = dict.fromkeys(regions, 0.)
+            for index, material in enumerate(geometry.materials, start=2):
+                for tag in membership[material.shape]:
+                    region_tags[tag] = index
+            for potential in geometry.potentials:
+                if not isinstance(potential.shape, str):
+                    for tag in membership[potential.shape]:
+                        region_potentials[tag].append(potential.id)
+            for charge in geometry.charges:
+                for tag in membership[charge.shape]:
+                    region_charge[tag] = charge.density
 
             grouped: dict[int, list[int]] = {}
-            for entity, tag in surface_tags.items():
+            for entity, tag in region_tags.items():
                 grouped.setdefault(tag, []).append(entity)
             for tag, entities in grouped.items():
-                gmsh.model.addPhysicalGroup(2, entities, tag)
-                gmsh.model.setPhysicalName(2, tag, names[tag])
+                gmsh.model.addPhysicalGroup(dim, entities, tag)
+                gmsh.model.setPhysicalName(dim, tag, names[tag])
 
             fields: list[int] = []
             target_values = [maximum]
@@ -473,48 +465,53 @@ def discretize_2d(
                     field = gmsh.model.mesh.field.add("Constant")
                     gmsh.model.mesh.field.setNumber(field, "VIn", target * scale)
                     gmsh.model.mesh.field.setNumber(field, "VOut", maximum * scale)
-                    gmsh.model.mesh.field.setNumbers(field, "SurfacesList", entities)
+                    gmsh.model.mesh.field.setNumbers(field, "SurfacesList" if dim == 2 else "VolumesList", entities)
                     fields.append(field)
                     target_values.append(target)
 
-            interface_curves: dict[float, list[int]] = {}
-            boundary_curves: dict[float, list[int]] = {}
-            surface_set = set(surfaces)
-            for _, curve in gmsh.model.getEntities(1):
-                upward, _ = gmsh.model.getAdjacencies(1, curve)
-                adjacent = [int(entity) for entity in upward if int(entity) in surface_set]
-                adjacent_tags = {surface_tags[entity] for entity in adjacent}
+            interface_facets: dict[float, list[int]] = {}
+            boundary_facets: dict[float, list[int]] = {}
+            region_set = set(regions)
+            for _, facet in gmsh.model.getEntities(dim - 1):
+                upward, _ = gmsh.model.getAdjacencies(dim - 1, facet)
+                adjacent = [int(entity) for entity in upward if int(entity) in region_set]
+                adjacent_tags = {region_tags[entity] for entity in adjacent}
                 if interface_factor is not None and len(adjacent_tags) > 1:
                     target = interface_factor * min(targets[tag] for tag in adjacent_tags)
-                    interface_curves.setdefault(target, []).append(int(curve))
+                    interface_facets.setdefault(target, []).append(int(facet))
                 is_outer = len(adjacent) == 1
-                is_potential_edge = len(adjacent) == 2 and surface_potentials[adjacent[0]] != surface_potentials[adjacent[1]]
+                is_potential_edge = len(adjacent) == 2 and region_potentials[adjacent[0]] != region_potentials[adjacent[1]]
                 if boundary_factor is not None and (is_outer or is_potential_edge):
-                    target = boundary_factor * min(targets[surface_tags[entity]] for entity in adjacent)
-                    boundary_curves.setdefault(target, []).append(int(curve))
+                    target = boundary_factor * min(targets[region_tags[entity]] for entity in adjacent)
+                    boundary_facets.setdefault(target, []).append(int(facet))
 
-            for target, curves in interface_curves.items():
+            for target, facets in interface_facets.items():
                 _add_distance_field(
                     gmsh,
-                    curves,
+                    facets,
                     target,
                     maximum,
                     interface_width or 2.0 * target,
                     scale,
-                    fields,
+                    fields, dim - 1,
                 )
                 target_values.append(target)
-            for target, curves in boundary_curves.items():
+            for target, facets in boundary_facets.items():
                 _add_distance_field(
                     gmsh,
-                    curves,
+                    facets,
                     target,
                     maximum,
                     boundary_width or 3.0 * target,
                     scale,
-                    fields,
+                    fields, dim - 1,
                 )
                 target_values.append(target)
+            if adaptive_sizes is not None:
+                target_values.append(float(np.min(adaptive_sizes[1])))
+                view = size_view(gmsh, adaptive_sizes, origin, scale)
+                append_size_view(gmsh, view, fields)
+            fields.extend(curve_size_fields(gmsh, geometry_tolerance, scale, maximum, surfaces=dim == 3))
             if len(fields) == 1:
                 gmsh.model.mesh.field.setAsBackgroundMesh(fields[0])
             elif fields:
@@ -524,38 +521,50 @@ def discretize_2d(
 
             gmsh.option.setNumber("Mesh.ElementOrder", 1)
             gmsh.option.setNumber("Mesh.MeshSizeMax", maximum * scale)
-            gmsh.option.setNumber("Mesh.MeshSizeMin", max(min(target_values) * scale * 0.05, 1e-12))
+            gmsh.option.setNumber("Mesh.MeshSizeMin", 1e-12 if geometry_tolerance is not None else max(min(target_values) * scale * 0.05, 1e-12))
             gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
             gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
-            gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
-            gmsh.model.mesh.generate(2)
+            gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 24)
+            gmsh.model.mesh.generate(dim)
 
             node_tags, coordinates, _ = gmsh.model.mesh.getNodes()
-            points = np.asarray(coordinates, dtype=float).reshape(-1, 3)[:, :2] / scale
-            points += np.asarray((xmin, ymin))
-            element_tags, connectivity = gmsh.model.mesh.getElementsByType(2)
+            points = np.asarray(coordinates, dtype=float).reshape(-1, 3)[:, :dim] / scale
+            points += origin
+            element_tags, connectivity = gmsh.model.mesh.getElementsByType(element_type)
             if not len(element_tags):
-                raise MeshError("Gmsh generated no first-order triangular elements.")
+                raise MeshError("Gmsh generated no first-order simplex elements.")
             lookup = {int(tag): index for index, tag in enumerate(node_tags)}
-            raw = np.asarray(connectivity, dtype=np.int64).reshape(-1, 3)
-            triangles = np.fromiter(
+            raw = np.asarray(connectivity, dtype=np.int64).reshape(-1, dim + 1)
+            simplices = np.fromiter(
                 (lookup[int(tag)] for tag in raw.ravel()), dtype=np.int64, count=raw.size
-            ).reshape(-1, 3)
+            ).reshape(-1, dim + 1)
+            element_index = {int(tag): i for i, tag in enumerate(element_tags)}
+            tags = np.empty(len(simplices), dtype=np.int32)
+            charge_density = np.zeros(len(tags))
+            potential_cells = {p.id: np.zeros(len(tags), dtype=bool)
+                               for p in geometry.potentials if not isinstance(p.shape, str)}
+            for entity in regions:
+                cell_tags, _ = gmsh.model.mesh.getElementsByType(element_type, entity)
+                indices = [element_index[int(tag)] for tag in cell_tags]
+                tags[indices] = region_tags[entity]
+                charge_density[indices] = region_charge[entity]
+                for owner in region_potentials[entity]:
+                    potential_cells[owner][indices] = True
         except MeshError:
             raise
         except Exception as exc:
-            raise MeshError(f"Gmsh failed to generate the 2D electrostatic mesh: {exc}") from exc
+            raise MeshError(f"Gmsh failed to generate the {dim}D electrostatic mesh: {exc}") from exc
         finally:
+            if view is not None:
+                gmsh.view.remove(view)
             _finish_gmsh(gmsh, owned, previous_model, previous_options, model_name, model_added)
 
-    element_centers = points[triangles].mean(axis=1)
-    tags = geometry.material_indices_at(element_centers)
     try:
-        from skfem import MeshTri
+        from skfem import MeshTet, MeshTri
     except Exception as exc:  # pragma: no cover - depends on host installation
         raise MeshError("scikit-fem could not be imported; install the package dependencies.") from exc
-    mesh = MeshTri(points.T, triangles.T)
-    hmin, hmax = _mesh_extrema(points, triangles)
+    mesh = (MeshTri if dim == 2 else MeshTet)(points.T, simplices.T)
+    hmin, hmax = _mesh_extrema(points, simplices)
     return FEMMesh(
         mesh=mesh,
         nodes=points,
@@ -564,7 +573,7 @@ def discretize_2d(
         physical_names=names,
         info=MeshInfo(
             nodes=len(points),
-            elements=len(triangles),
+            elements=len(simplices),
             minimum_edge=hmin,
             maximum_edge=hmax,
             requested_maximum_edge=maximum,
@@ -573,8 +582,12 @@ def discretize_2d(
             boundary_refinement=boundary_factor,
             material_element_sizes=MappingProxyType({names[tag]: value for tag, value in targets.items()}),  # type: ignore[arg-type]
         ),
+        potential_cells=potential_cells, has_curves=has_curves, charge_density=charge_density,
         geometry_revision=geometry.revision,
     )
 
 
-__all__ = ["FEMMesh", "MeshInfo", "discretize_1d", "discretize_2d"]
+# Existing callers use this name for planar meshes.
+discretize_2d = discretize_simplices
+
+__all__ = ["FEMMesh", "MeshInfo", "discretize_1d", "discretize_2d", "discretize_simplices"]

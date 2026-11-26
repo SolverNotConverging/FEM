@@ -77,6 +77,10 @@ The example allows two adaptive refinements. Geometry edits invalidate
 ``show()`` opens the interactive PyVista/Qt viewer (``fem view result.h5`` opens saved
 archives). Saving and loading work without a display.
 
+For a rotatable full-vector plot, use ``result.plot(component="H vector").show()``
+or select the electric or magnetic vector in the viewer. A planar mode retains
+its field component normal to the sampling plane.
+
 For a 2D periodic cell, ``Et`` and ``Ht`` plot the in-plane pairs (Ex, Ez)
 and (Hx, Hz) on the x-z mesh. Use these selections in the viewer or with
 ``result.plot(component="Et")``. In 3D the viewer draws transverse x/y arrows

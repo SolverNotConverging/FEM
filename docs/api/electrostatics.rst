@@ -25,7 +25,7 @@ Python mode and case indices are zero-based.
 results without solving. Archives use ``fem-results`` schema ``1.0``;
 old or convention-incompatible files raise ``PersistenceError``. Loaded
 results can plot, show, and save; they do not restart a solver or restore callbacks.
-``plot()`` returns a Matplotlib Figure without opening a window.
+``plot()`` returns a PyVista plotter in 3D or a Matplotlib Figure in 1D/2D without opening a window.
 ``show(block=True)`` waits for the viewer; ``block=False`` returns immediately.
 
 Electrostatic fields are static. ``epsilon`` accepts a positive scalar, a
@@ -46,7 +46,7 @@ Solver construction and operations
 
 .. code-block:: python
 
-    ElectrostaticSolver(*, dim: 'int' = 2, x_range: 'float | Sequence[float]' = 1.0, y_range: 'float | Sequence[float] | None' = None, background_material: 'materials.Material' = Material(name='vacuum', epsilon=(1+0j), mu=(1+0j)), outer_potential: 'float | None' = 0.0) -> 'None'
+    ElectrostaticSolver(*, dim: 'int' = 2, x_range: 'float | Sequence[float]' = 1.0, y_range: 'float | Sequence[float] | None' = None, z_range: 'float | Sequence[float] | None' = None, background_material: 'materials.Material' = Material(name='vacuum', epsilon=(1+0j), mu=(1+0j)), outer_potential: 'float | None' = 0.0) -> 'None'
 
 Solve ``-div(epsilon_0 epsilon_r grad(phi)) = rho`` with continuous Lagrange finite elements.
 
@@ -63,7 +63,7 @@ Solve ``-div(epsilon_0 epsilon_r grad(phi)) = rho`` with continuous Lagrange fin
      - ``int``
      - Optional
      - ``2``
-     - Electrostatic mesh dimension: 1 or 2.
+     - Electrostatic mesh dimension (1, 2, or 3).
    * - ``x_range``
      - ``float | Sequence[float]``
      - Optional
@@ -74,6 +74,11 @@ Solve ``-div(epsilon_0 epsilon_r grad(phi)) = rho`` with continuous Lagrange fin
      - Optional
      - ``None``
      - Physical y extent or increasing bounds, in metres.
+   * - ``z_range``
+     - ``float | Sequence[float] | None``
+     - Optional
+     - ``None``
+     - Physical z extent or increasing bounds, in metres.
    * - ``background_material``
      - ``materials.Material``
      - Optional
@@ -294,6 +299,103 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
 
 Returns: the configured geometry/excitation handle, or None for in-place configuration.
 
+``ElectrostaticSolver.add_box``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    ElectrostaticSolver.add_box(*, x_range, y_range, z_range, material, name=None, clip=False)
+
+Assign a material to an axis-aligned solid box.
+
+.. list-table:: Arguments
+   :header-rows: 1
+   :widths: 16 20 12 16 36
+
+   * - Argument
+     - Type / units
+     - Required / optional
+     - Default
+     - Meaning
+   * - ``x_range``
+     - ``float | tuple[float, float] / m``
+     - Required
+     - ``—``
+     - Physical x extent or increasing bounds, in metres.
+   * - ``y_range``
+     - ``float | tuple[float, float] / m``
+     - Required
+     - ``—``
+     - Physical y extent or increasing bounds, in metres.
+   * - ``z_range``
+     - ``array-like or scalar``
+     - Required
+     - ``—``
+     - Physical z extent or increasing bounds, in metres.
+   * - ``material``
+     - ``array-like or scalar``
+     - Required
+     - ``—``
+     - A predefined bulk, ideal-boundary, or supported SIBC material.
+   * - ``name``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Optional name used for later identification and diagnostics.
+   * - ``clip``
+     - ``bool``
+     - Optional
+     - ``False``
+     - Intersect the shape with the solver domain; otherwise out-of-bounds objects raise GeometryError.
+
+Returns: the configured geometry/excitation handle, or None for in-place configuration.
+
+``ElectrostaticSolver.add_sphere``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    ElectrostaticSolver.add_sphere(*, center, radius, material, name=None, clip=False)
+
+Assign a material to a solid sphere.
+
+.. list-table:: Arguments
+   :header-rows: 1
+   :widths: 16 20 12 16 36
+
+   * - Argument
+     - Type / units
+     - Required / optional
+     - Default
+     - Meaning
+   * - ``center``
+     - ``tuple[float, ...] / m``
+     - Required
+     - ``—``
+     - Physical centre coordinates in metres.
+   * - ``radius``
+     - ``array-like or scalar``
+     - Required
+     - ``—``
+     - Positive radius in metres.
+   * - ``material``
+     - ``array-like or scalar``
+     - Required
+     - ``—``
+     - A predefined bulk, ideal-boundary, or supported SIBC material.
+   * - ``name``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Optional name used for later identification and diagnostics.
+   * - ``clip``
+     - ``bool``
+     - Optional
+     - ``False``
+     - Intersect the shape with the solver domain; otherwise out-of-bounds objects raise GeometryError.
+
+Returns: the configured geometry/excitation handle, or None for in-place configuration.
+
 ``ElectrostaticSolver.set_material``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -459,7 +561,7 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
 
 .. code-block:: python
 
-    ElectrostaticSolver.mesh(*, max_element_size: 'float | None' = None, element_order: 'int' = 2, quadrature_order: 'int' = 5, material_aware: 'bool' = True, interface_refinement: 'float | None' = 0.7, boundary_refinement: 'float | None' = 0.5, interface_refinement_width: 'float | None' = None, boundary_refinement_width: 'float | None' = None) -> 'FEMMesh'
+    ElectrostaticSolver.mesh(*, max_element_size: 'float | None' = None, element_order: 'int' = 2, quadrature_order: 'int' = 5, material_aware: 'bool' = True, interface_refinement: 'float | None' = 0.7, boundary_refinement: 'float | None' = 0.5, interface_refinement_width: 'float | None' = None, boundary_refinement_width: 'float | None' = None, geometry_tolerance: 'float | None' = None) -> 'FEMMesh'
 
 Discretize after geometry; high-Dk regions and boundaries refine locally.
 
@@ -512,6 +614,11 @@ Discretize after geometry; high-Dk regions and boundaries refine locally.
      - Optional
      - ``None``
      - Width in metres over which boundary mesh refinement transitions to the bulk size; None selects the mesher default.
+   * - ``geometry_tolerance``
+     - ``float | None``
+     - Optional
+     - ``None``
+     - Target chord sagitta on curved CAD edges, in metres. None uses curvature-based sizing.
 
 Returns: the initial mesh stored in ``mesh_data``.
 
@@ -605,7 +712,7 @@ and ``beta``; each mode provides sampled fields and residual diagnostics.
 
     ElectrostaticResult.plot(*, component: 'str | None' = None, quantity: 'str' = 'real')
 
-Return a potential, field, or mesh figure without opening a window.
+Return a Matplotlib figure in 1D or 2D, or a PyVista plotter in 3D.
 
 .. list-table:: Arguments
    :header-rows: 1
@@ -627,7 +734,7 @@ Return a potential, field, or mesh figure without opening a window.
      - ``'real'``
      - Displayed field quantity: real, imag, magnitude/abs, or phase; static fields support real or magnitude.
 
-Returns: a Matplotlib Figure.
+Returns: a PyVista plotter in 3D or a Matplotlib Figure in 1D/2D.
 
 ``ElectrostaticResult.show``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -714,7 +821,7 @@ The result is an inspection snapshot; editing it cannot restart a solver.
 ``element_electric_field`` and ``element_displacement_field`` retain cell fields.
 ``conductor_charges`` maps configured conductor names to charge, and
 ``energy`` records electrostatic energy (per unit transverse area in 1D,
-per unit length in 2D). ``residual_norm`` is the algebraic residual;
+per unit length in 2D and total joules in 3D). ``residual_norm`` is the algebraic residual;
 ``adaptive_history`` records mesh sizes, error indicators, and stopping status.
 
 Geometry and material values

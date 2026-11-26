@@ -6,6 +6,8 @@ from math import factorial
 
 import numpy as np
 from skfem import InteriorFacetBasis
+from ._budget import RefinementLimit, field_dofs, resource_limits
+from ._volume import derivative_operators, material_from_volume, modal_volume
 from fem.common.discretization import DEFAULT_QUADRATURE_ORDER
 from fem.common.progress import report_refinement
 
@@ -32,7 +34,7 @@ def validate_controls(max_refinements, adaptive_tolerance, error_type=ValueError
 
 
 def run_adaptive(owner, solve_once, estimate, refine, *, max_refinements,
-                 adaptive_tolerance, error_type=ValueError, retry_errors=()):
+                 adaptive_tolerance, error_type=ValueError, retry_errors=(), max_elements=None, max_dofs=None):
     """Perform one initial solve and at most max_refinements mesh updates.
 
     An exhausted budget returns the last solution with converged=False.  A
@@ -40,6 +42,20 @@ def run_adaptive(owner, solve_once, estimate, refine, *, max_refinements,
     converged pass.  Failed remeshing restores the last usable owner state.
     """
     limit, tolerance = validate_controls(max_refinements, adaptive_tolerance, error_type)
+    limits = resource_limits(max_elements, max_dofs)
+
+    def update_mesh(weights):
+        saved = owner.__dict__.copy()
+        owner._adaptive_limits = limits
+        try:
+            refine(weights)
+        except Exception:
+            owner.__dict__.clear()
+            owner.__dict__.update(saved)
+            raise
+        finally:
+            owner.__dict__.pop("_adaptive_limits", None)
+
     history = []
     for iteration in range(limit + 1):
         try:
@@ -49,46 +65,71 @@ def run_adaptive(owner, solve_once, estimate, refine, *, max_refinements,
                             "status": "solve_failed", "message": str(exc)})
             if iteration == limit:
                 raise
-            saved = owner.__dict__.copy()
-            try:
-                refine(None)
-            except Exception:
-                owner.__dict__.clear()
-                owner.__dict__.update(saved)
-                raise
-            del saved
+            update_mesh(None)
             continue
-        indicators, residual = estimate(result)
+        indicators, residual, *components = estimate(result)
         if not np.isfinite(residual):
             raise error_type("Adaptive discretization residual is non-finite.")
         converged = residual <= tolerance
         status = "tolerance" if converged else "refinement_limit" if iteration == limit else "refine"
         history.append({"refinement": iteration, "elements": len(indicators),
                         "residual": float(residual), "status": status})
+        if components:
+            history[-1]["residual_components"] = components[0]
+        if len(components) > 1:
+            history[-1].update(components[1])
         info = getattr(result, "metadata", None) or getattr(result, "solve_info", {})
+        data = getattr(owner, "mesh_data", None)
+        if data is not None:
+            mesh = getattr(data, "mesh", None)
+            if mesh is None:
+                mesh = getattr(owner, "_mesh", None)
+            if mesh is not None:
+                history[-1].update(mesh_quality(mesh))
+                order = data.info.element_order if hasattr(data.info, "element_order") else data.info["element_order"]
+                mixed = hasattr(getattr(owner, "_system", None), "transverse_indices")
+                history[-1]["field_dofs"] = field_dofs(mesh, order, mixed)
+                history[-1]["mesh_elements"] = mesh.nelements
+        modes = getattr(result, "modes", ())
+        pml_fractions = [m.pml_fraction for m in modes if getattr(m, "pml_fraction", None) is not None]
+        if pml_fractions:
+            history[-1]["max_mode_pml_fraction"] = max(pml_fractions)
+        if info.get("ndofs") is not None:
+            history[-1]["ndofs"] = info["ndofs"]
+        if status == "refine":
+            try:
+                update_mesh(indicators)
+            except RefinementLimit as exc:
+                history[-1].update(status=exc.status, message=str(exc))
+                status = exc.status
         report_refinement(owner, iteration, limit, len(indicators), residual, tolerance, status,
                           info.get("ndofs"))
-        if converged or iteration == limit:
-            key = "metadata" if any(field.name == "metadata" for field in fields(result)) else "solve_info"
-            updated = replace(result, **{key: {
-                **getattr(result, key), "adaptive_history": tuple(history),
-                "adaptive_residual": float(residual), "adaptive_converged": bool(converged),
-                "max_refinements": limit, "adaptive_tolerance": tolerance,
-            }})
-            for name, value in tuple(vars(owner).items()):
-                if value is result:
-                    setattr(owner, name, updated)
-            return updated
-        saved = owner.__dict__.copy()
-        try:
-            refine(indicators)
-        except Exception:
-            owner.__dict__.clear()
-            owner.__dict__.update(saved)
-            raise
-        # Release the rollback snapshot before assembling/solving the next
-        # mesh, including any large device buffers owned by the previous mesh.
-        del saved
+        if status != "refine":
+            break
+    key = "metadata" if any(field.name == "metadata" for field in fields(result)) else "solve_info"
+    updated = replace(result, **{key: {
+        **getattr(result, key), "adaptive_history": tuple(history),
+        "adaptive_residual": float(residual), "adaptive_converged": bool(converged),
+        "max_refinements": limit, "adaptive_tolerance": tolerance,
+        "max_elements": limits[0], "max_dofs": limits[1],
+    }})
+    for name, value in tuple(vars(owner).items()):
+        if value is result:
+            setattr(owner, name, updated)
+    return updated
+
+
+def mesh_quality(mesh):
+    """Simplex mean-ratio quality (one for a regular simplex, zero at collapse)."""
+    dim = mesh.dim()
+    points = mesh.p[:, mesh.t].transpose(2, 1, 0)
+    edges = [np.sum((points[:, i] - points[:, j])**2, axis=1)
+             for i in range(dim + 1) for j in range(i)]
+    squared = np.array(edges)
+    determinant = abs(np.linalg.det(points[:, 1:] - points[:, :1]))
+    ratio = 2 * (determinant / np.sqrt(dim + 1))**(2 / dim) / squared.mean(axis=0)
+    return {"minimum_quality": float(ratio.min()), "quality_p05": float(np.percentile(ratio, 5)),
+            "minimum_edge": float(np.sqrt(squared.min())), "maximum_edge": float(np.sqrt(squared.max()))}
 
 
 def bulk_mark(indicators, fraction=0.5):
@@ -106,21 +147,60 @@ def cell_geometry(mesh):
     return h, measure
 
 
+def periodic_facet_pairs(mesh, node_pairs):
+    """Pair seam facets by their translated vertices in matching row order."""
+    slave, master = np.asarray(node_pairs, dtype=int).T
+    boundary = mesh.boundary_facets()
+    vertices = mesh.facets[:, boundary]
+    representatives = np.arange(mesh.nvertices)
+    representatives[slave] = master
+    def facet_map(nodes):
+        selected = boundary[np.isin(vertices, nodes).all(axis=0)]
+        return {tuple(sorted(representatives[mesh.facets[:, f]])): f for f in selected}
+    left, right = facet_map(slave), facet_map(master)
+    if left.keys() != right.keys():
+        raise ValueError("Periodic seam facets do not match by vertex correspondence.")
+    return np.array([(f, right[key]) for key, f in left.items()], dtype=int).reshape(-1, 2)
+
+
+def seam_permutation(left, right):
+    """Align quadrature points in tangential coordinates on translated z faces."""
+    distance = np.sum((left[:-1, :, :, None] - right[:-1, :, None, :])**2, axis=0)
+    return distance.argmin(axis=-1)
+
+
 def maxwell_jump_residual(basis, fields, material, *, axes, excluded_facets=(),
                           periodic_node_pairs=None, quadrature_order=DEFAULT_QUADRATURE_ORDER):
-    """Normalized normal-D/tangential-H interface residual, using FE traces.
+    """Evaluate interface jumps for a point evaluator or a mesh-owned CellMaterial."""
+    if hasattr(material, "on_cells"):
+        def coefficients(cells, *coords):
+            return material.on_cells(*coords, cells=cells)
+    else:
+        coefficients = material_from_volume(basis, material)
+
+    indicators, relative, _ = maxwell_residual(
+        basis, fields, coefficients, axes=axes, neff=None, excluded_facets=excluded_facets,
+        periodic_node_pairs=periodic_node_pairs, quadrature_order=quadrature_order)
+    return indicators, relative
+
+
+def maxwell_residual(basis, fields, cell_material, *, axes, neff, natural=(), excluded_facets=(),
+                          periodic_node_pairs=None, quadrature_order=DEFAULT_QUADRATURE_ORDER):
+    """Estimate the Maxwell volume equations and interface and natural-boundary traces.
 
     `fields(basis, material)` returns E and impedance-scaled H, each shaped
     (3, cells/facets, quadrature points). Coordinates are the basis's own
-    computational coordinates. Material values are sampled toward each cell
-    interior to distinguish the two sides of a dielectric interface.
+    computational coordinates. Each trace uses its adjacent cell's bulk material and the PML
+    stretch evaluated at the trace quadrature point.
     Periodic envelope traces are compared across corresponding seam facets.
     This estimator is not an algebraic residual or a certified error bound.
     """
     mesh = basis.mesh
-    h, measure = cell_geometry(mesh)
-    electric, magnetic = fields(basis, material)
-    eps, _ = material(*basis.global_coordinates())
+    h, _ = cell_geometry(mesh)
+
+    coefficients = cell_material(slice(None), *basis.global_coordinates())
+    electric, magnetic = fields(basis, lambda *coords: coefficients)
+    eps, _ = coefficients
     dfield = eps * electric
     scale = float(np.sum(basis.dx * (np.sum(abs(dfield)**2, axis=0)
                                      + np.sum(abs(magnetic)**2, axis=0))))
@@ -131,59 +211,58 @@ def maxwell_jump_residual(basis, fields, material, *, axes, excluded_facets=(),
         fb = InteriorFacetBasis(mesh, basis.elem, facets=facet_ids, side=side,
                                 dofs=basis.dofs, intorder=quadrature_order)
         coords = np.asarray(fb.global_coordinates())
-        centers = mesh.p[:, mesh.t[:, mesh.f2t[side, facet_ids]]].mean(axis=1)
-        inside = coords + 1e-8 * (centers[:, :, None] - coords)
+        coefficients = cell_material(fb.tind, *coords)
 
-        def side_material(*unused):
-            return material(*inside)
+        e, hfield = fields(fb, lambda *unused: coefficients)
+        epsilon, _ = coefficients
+        return fb, epsilon * e, hfield, e
 
-        e, hfield = fields(fb, side_material)
-        epsilon, _ = side_material()
-        return fb, epsilon * e, hfield
-
-    if len(facets):
-        fb, d0, h0 = trace(facets, 0)
-        _, d1, h1 = trace(facets, 1)
+    def add_jump(fb, dd, dh, left, right):
         normal = np.zeros((3, *fb.normals.shape[1:]))
         normal[list(axes)] = fb.normals
-        dh = h0 - h1
-        normal_d = np.sum(normal * (d0 - d1), axis=0)
+        normal_d = np.sum(normal * dd, axis=0)
         tangent_h = dh - normal * np.sum(normal * dh, axis=0)
-        left, right = mesh.f2t[:, facets]
         contribution = 0.5 * (h[left] + h[right]) * np.sum(
             fb.dx * (abs(normal_d)**2 + np.sum(abs(tangent_h)**2, axis=0)), axis=1)
         np.add.at(indicators, left, contribution / 2)
         np.add.at(indicators, right, contribution / 2)
 
+    for start in range(0, len(facets), 2048):
+        selected = facets[start:start + 2048]
+        fb, d0, h0, _ = trace(selected, 0)
+        _, d1, h1, _ = trace(selected, 1)
+        add_jump(fb, d0 - d1, h0 - h1, *mesh.f2t[:, selected])
     if periodic_node_pairs is not None and len(periodic_node_pairs):
-        # Match boundary facets by their periodic vertex representatives.
-        representative = np.arange(mesh.nvertices)
-        pairs = np.asarray(periodic_node_pairs, dtype=int)
-        representative[pairs[:, 0]] = pairs[:, 1]
-        seam_nodes = set(pairs.ravel())
-        groups = {}
-        for facet in mesh.boundary_facets():
-            nodes = mesh.facets[:, facet]
-            if all(int(node) in seam_nodes for node in nodes):
-                groups.setdefault(tuple(sorted(representative[nodes])), []).append(int(facet))
-        # Facet quadrature may be permuted at the seam. Compare cell-constant
-        # mean flux traces; interior jumps above retain full quadrature.
-        for pair in groups.values():
-            if len(pair) != 2:
-                continue  # transverse walls can touch the seam at corners
-            fa, da, ha = trace(np.array(pair[:1]), 0)
-            fb, db, hb = trace(np.array(pair[1:]), 0)
-            normal = np.zeros(3)
-            normal[list(axes)] = np.mean(fa.normals[:, 0], axis=1)
-            wa, wb = fa.dx[0] / fa.dx[0].sum(), fb.dx[0] / fb.dx[0].sum()
-            dd = da[:, 0] @ wa - db[:, 0] @ wb
-            dh = ha[:, 0] @ wa - hb[:, 0] @ wb
-            cells = mesh.f2t[0, pair]
-            value = float(np.mean(h[cells]) * np.sum(fa.dx) * (
-                abs(normal @ dd)**2 + np.sum(abs(dh - normal * (normal @ dh))**2)))
-            indicators[cells] += value / 2
-    residual = float(np.sqrt(indicators.sum() / max(scale, np.finfo(float).tiny)))
-    return indicators, residual
+        seam = periodic_facet_pairs(mesh, periodic_node_pairs)
+        if len(seam):
+            fa, da, ha, _ = trace(seam[:, 0], 0)
+            fb, db, hb, _ = trace(seam[:, 1], 0)
+            order = seam_permutation(fa.global_coordinates(), fb.global_coordinates())[None]
+            add_jump(fa, da - np.take_along_axis(db, order, axis=2),
+                     ha - np.take_along_axis(hb, order, axis=2), fa.tind, fb.tind)
+    if neff is None:
+        return indicators, float(np.sqrt(indicators.sum() / max(scale, np.finfo(float).tiny))), {}
+    components = {"interface": indicators.sum()}
+    pde, divergence = modal_volume(dfield, magnetic, neff, axes, derivative_operators(basis))
+    for name, density in (("element_pde", pde), ("divergence", divergence)):
+        local = h**2 * np.sum(basis.dx * density, axis=1)
+        indicators += local
+        components[name] = local.sum()
+    components["natural_boundary"] = 0.
+    for selected, admittance in natural:
+        if not len(selected):
+            continue
+        fb, _, hfield, e = trace(selected, 0)
+        normal = np.zeros_like(e.real)
+        normal[list(axes)] = fb.normals
+        tangent_e = e - normal * np.sum(normal * e, axis=0)
+        mismatch = np.cross(normal, hfield, axis=0) + admittance * tangent_e
+        local = h[fb.tind] * np.sum(fb.dx * np.sum(abs(mismatch)**2, axis=0), axis=1)
+        np.add.at(indicators, fb.tind, local)
+        components["natural_boundary"] += local.sum()
+    scale = max(scale, np.finfo(float).tiny)
+    components = {name: float(np.sqrt(value / scale)) for name, value in components.items()}
+    return indicators, float(np.sqrt(indicators.sum() / scale)), components
 
 
 def mixed_mode_fields(basis, coefficients, neff, material):

@@ -11,7 +11,8 @@ import weakref
 import numpy as np
 from skfem import InteriorFacetBasis
 
-from fem.adaptivity.policy import cell_geometry
+from fem.adaptivity.policy import cell_geometry, periodic_facet_pairs, seam_permutation
+from fem.adaptivity._volume import derivative_operators, domain_residuals, modal_volume
 from fem.common.gpu import _runtime, quadratic_operator
 from fem.common.constants import ETA_0
 from fem.common._gpu_resident_arnoldi import iterate_device, check_resident_available
@@ -21,15 +22,15 @@ from .exceptions import SolverError
 from .results import PeriodicMode, PeriodicModeSet, PeriodicSampledFields
 
 class _Basis:
-    def __init__(self, basis, solver, coordinates=None):
+    def __init__(self, basis, solver):
         import cupy as cp
         self.dofs = cp.asarray(basis.element_dofs)
         self.values = cp.asarray(np.stack([np.asarray(item[0]) for item in basis.basis]))
         self.curls = cp.asarray(np.stack([np.asarray(item[0].curl) for item in basis.basis]))
         self.dx = cp.asarray(basis.dx)
-        coordinates = np.asarray(basis.global_coordinates()) if coordinates is None else coordinates
-        eps, mu = evaluate_material_3d(solver.geometry.transformed_material_at,
-                                      *(coordinates/solver.k0))
+        coordinates = np.asarray(basis.global_coordinates()) / solver.k0
+        cells = slice(None) if basis.tind is None else basis.tind
+        eps, mu = solver.system.material_at.on_cells(*coordinates, cells=cells)
         self.epsilon, self.mu = cp.asarray(eps), cp.asarray(mu)
 
     def fields(self, full, neff, array_module=None):
@@ -56,7 +57,7 @@ class ResidentSystem3D:
         self.g0_norm, self.g1_norm = cp.linalg.norm(self.g0.data), cp.linalg.norm(self.g1.data)
         self.volume = _Basis(system.basis, solver)
         coordinates = np.asarray(system.basis.global_coordinates()/solver.k0)
-        eps, mu = evaluate_material_3d(solver.geometry.material_at, *coordinates)
+        eps, mu = evaluate_material_3d(system.material_at.bulk, *coordinates)
         self.physical_epsilon, self.physical_mu = cp.asarray(eps), cp.asarray(mu)
         self.pml = cp.asarray(solver.geometry.pml_mask(*coordinates[:2]))
         self.weights = self.volume.dx/solver.k0**3
@@ -71,6 +72,12 @@ class ResidentSystem3D:
         mesh = system.basis.mesh
         h, _ = cell_geometry(mesh)
         self.h = cp.asarray(h)
+        self.derivatives = tuple(cp.asarray(a) for a in derivative_operators(system.basis))
+        groups = solver.mesh_data.boundary_facets
+        natural = np.union1d(groups.get("pmc", ()), groups.get("outer_pmc", ())).astype(int)
+        self.natural = None
+        if len(natural):
+            self.natural = (*self._trace(natural, 0), cp.asarray(mesh.f2t[0, natural]))
         interior = np.flatnonzero(mesh.f2t[1] >= 0)
         self.interior = None
         if len(interior):
@@ -78,30 +85,23 @@ class ResidentSystem3D:
             right = self._trace(interior, 1)
             self.interior = (left, right, cp.asarray(mesh.f2t[:, interior]))
         pairs = np.asarray(solver.mesh_data.periodic_node_pairs)
-        representatives = np.arange(mesh.nvertices)
-        representatives[pairs[:, 0]] = pairs[:, 1]
-        seam_nodes, groups = set(pairs.ravel()), {}
-        for facet in mesh.boundary_facets():
-            nodes = mesh.facets[:, facet]
-            if all(int(node) in seam_nodes for node in nodes):
-                groups.setdefault(tuple(sorted(representatives[nodes])), []).append(int(facet))
-        seam = np.asarray([pair for pair in groups.values() if len(pair) == 2], dtype=int).reshape(-1, 2)
+        seam = periodic_facet_pairs(mesh, pairs)
         self.seam = None
         if len(seam):
-            left, right = self._trace(seam[:, 0], 0), self._trace(seam[:, 1], 0)
-            self.seam = (left, right, cp.asarray(mesh.f2t[0, seam].T))
+            left, coords_a = self._trace(seam[:, 0], 0, with_coordinates=True)
+            right, coords_b = self._trace(seam[:, 1], 0, with_coordinates=True)
+            order = cp.asarray(seam_permutation(coords_a, coords_b)[None])
+            self.seam = (left, right, cp.asarray(mesh.f2t[0, seam].T), order)
         cp.cuda.get_current_stream().synchronize()
 
-    def _trace(self, facets, side):
+    def _trace(self, facets, side, with_coordinates=False):
         import cupy as cp
         basis, solver = self.system.basis, self.solver
         mesh = basis.mesh
         fb = InteriorFacetBasis(mesh, basis.elem, facets=facets, side=side,
                                 dofs=basis.dofs, intorder=self.system.quadrature_order)
-        coordinates = np.asarray(fb.global_coordinates())
-        centers = mesh.p[:, mesh.t[:, mesh.f2t[side, facets]]].mean(axis=1)
-        inside = coordinates+1e-8*(centers[:, :, None]-coordinates)
-        return _Basis(fb, solver, inside), cp.asarray(fb.normals)
+        trace = _Basis(fb, solver), cp.asarray(fb.normals)
+        return (trace, fb.global_coordinates()) if with_coordinates else trace
 
     def physical_data(self, full, neff):
         import cupy as cp
@@ -142,21 +142,33 @@ class ResidentSystem3D:
             cp.add.at(indicator, cells[0], value/2)
             cp.add.at(indicator, cells[1], value/2)
         if self.seam is not None:
-            (left, normal), (right, _), cells = self.seam
+            (left, normal), (right, _), cells, order = self.seam
             e0, h0 = left.fields(full, neff)
             e1, h1 = right.fields(full, neff)
-            w0, w1 = left.dx/left.dx.sum(axis=1)[:, None], right.dx/right.dx.sum(axis=1)[:, None]
-            dd = cp.sum(left.epsilon*e0*w0[None], axis=2)-cp.sum(right.epsilon*e1*w1[None], axis=2)
-            dh = cp.sum(h0*w0[None], axis=2)-cp.sum(h1*w1[None], axis=2)
-            normals = cp.mean(normal, axis=2)
-            nd = cp.sum(normals*dd, axis=0)
-            tangent = dh-normals*cp.sum(normals*dh, axis=0)
-            value = cp.mean(self.h[cells], axis=0)*left.dx.sum(axis=1)*(
-                cp.abs(nd)**2+cp.sum(cp.abs(tangent)**2, axis=0))
+            dd = left.epsilon*e0 - cp.take_along_axis(right.epsilon*e1, order, axis=2)
+            dh = h0 - cp.take_along_axis(h1, order, axis=2)
+            nd = cp.sum(normal * dd, axis=0)
+            tangent = dh - normal * cp.sum(normal * dh, axis=0)
+            value = cp.mean(self.h[cells], axis=0) * cp.sum(
+                left.dx * (cp.abs(nd)**2 + cp.sum(cp.abs(tangent)**2, axis=0)), axis=1)
             cp.add.at(indicator, cells[0], value/2)
             cp.add.at(indicator, cells[1], value/2)
-        residual = cp.sqrt(indicator.sum()/cp.maximum(scale, np.finfo(float).tiny))
-        return indicator, residual
+        interface = indicator.sum()
+        pde, divergence = modal_volume(dfield, magnetic, neff, (0, 1, 2), self.derivatives, cp)
+        pde = self.h**2 * cp.sum(self.volume.dx * pde, axis=1)
+        divergence = self.h**2 * cp.sum(self.volume.dx * divergence, axis=1)
+        indicator += pde + divergence
+        wall = cp.asarray(0.)
+        if self.natural is not None:
+            face, normal, cells = self.natural
+            _, hfield = face.fields(full, neff)
+            tangent = cp.cross(normal, hfield, axis=0)
+            local = self.h[cells] * cp.sum(face.dx * cp.sum(abs(tangent)**2, axis=0), axis=1)
+            cp.add.at(indicator, cells, local)
+            wall = local.sum()
+        scale = cp.maximum(scale, np.finfo(float).tiny)
+        components = cp.sqrt(cp.stack((interface, pde.sum(), divergence.sum(), wall)) / scale)
+        return indicator, cp.sqrt(indicator.sum() / scale), components
 
     def solve(self, *, target, requested, direction, eigensolver_tolerance, residual_tolerance,
               divergence_tolerance, propagation_ratio_tolerance, pml_limit, ncv,
@@ -204,6 +216,8 @@ class ResidentSystem3D:
         selected_full, selected_fields, selected_metadata = [], [], []
         combined = cp.zeros(system.basis.mesh.nelements)
         maximum = cp.asarray(0.)
+        worst_components = cp.zeros(4)
+        worst_domains = cp.zeros(2)
         for j in range(requested):
             i = chosen[j]
             scale = cp.where(propagating[i], 1/cp.sqrt(cp.maximum(cp.abs(powers[i].real), 1e-300)),
@@ -213,8 +227,12 @@ class ResidentSystem3D:
             power, _, pml, pol, electric, magnetic = self.physical_data(coefficient, values[i])
             e = cp.sum(electric*self.weights[None], axis=2)/self.weight_sum
             h = cp.sum(magnetic*self.weights[None], axis=2)/self.weight_sum
-            indicator, residual = self.estimate(coefficient, values[i])
+            indicator, residual, components = self.estimate(coefficient, values[i])
             combined = cp.maximum(combined, indicator/cp.maximum(indicator.sum(), np.finfo(float).tiny)*residual**2)
+            if solver.geometry.pmls:
+                domains = cp.stack(domain_residuals(indicator, residual, self.pml.any(axis=1), cp))
+                worst_domains = cp.where(residual >= maximum, domains, worst_domains)
+            worst_components = cp.where(residual >= maximum, components, worst_components)
             maximum = cp.maximum(maximum, residual)
             selected_full.append(coefficient)
             selected_fields.append(cp.concatenate((e, h), axis=0).T)
@@ -262,7 +280,10 @@ class ResidentSystem3D:
                     name: np.asarray(solver.mesh_data.mesh.facets[:, facets].T, dtype=np.int64)
                     for name, facets in solver.mesh_data.boundary_facets.items() if len(facets)},
                 time_convention='exp(+1j*omega*t - 1j*k0*neff*z)'))
-        solver._gpu_resident_estimate = (result, combined, residual_host)
+        components = dict(zip(("interface", "element_pde", "divergence", "natural_boundary"),
+                              cp.asnumpy(worst_components).tolist(), strict=True))
+        domain_report = dict(zip(("physical_residual", "pml_residual"), cp.asnumpy(worst_domains).tolist())) if solver.geometry.pmls else {}
+        solver._gpu_resident_estimate = (result, combined, residual_host, components, domain_report)
         solver._result, solver.modes = result, result
         solver.neff, solver.beta, solver.gamma = result.neff, result.beta, result.gamma
         return result

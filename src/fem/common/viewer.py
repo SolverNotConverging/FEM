@@ -13,7 +13,7 @@ from typing import Any
 
 import numpy as np
 
-from ._vector_plot import aligned_components, draw_mode_vectors
+from ._vector_plot import aligned_components, cell_vector_samples, draw_mode_vectors
 
 _WAVE_COMPONENTS = ("Ex", "Ey", "Ez", "Hx", "Hy", "Hz", "E", "H")
 _QUANTITIES = ("real", "imag", "magnitude", "phase")
@@ -109,6 +109,8 @@ class _Source:
             from fem.scattering.visualization import field_views
             return field_views(case)
         if self.static:
+            if self.is_3d:
+                return ["potential", "E", "Ex", "Ey", "Ez", "|E|", "D", "Dx", "Dy", "Dz", "|D|"]
             two_d = case.coordinates.shape[1] == 2
             return ["potential", "Ex", *(["Ey"] if two_d else []), "E",
                     "Et", "Dx", *(["Dy"] if two_d else []), "D", "Dt"]
@@ -116,7 +118,10 @@ class _Source:
         if fields is not None and hasattr(fields, "components"):
             names = list(fields.components)
             vectors = ('E', 'H', *_TRANSVERSE_COMPONENTS)
-            return names + [n for n in vectors if n not in names]
+            views = names + [n for n in vectors if n not in names]
+            if not self.is_3d:
+                views.extend(("E vector", "H vector"))
+            return views
         return [*_WAVE_COMPONENTS, *_TRANSVERSE_COMPONENTS]
 
     def mesh_data(self, case: Any) -> Any:
@@ -130,7 +135,8 @@ class _Source:
         if self.scattering:
             return f"{case.frequency / 1e9:.6g} GHz   ·   {case.polarization}   ·   {case.solve_info['method']}"
         if self.static:
-            return f"energy = {case.energy:.6g} J   (static field: E and D; no H)"
+            unit = ("J/m²", "J/m", "J")[case.dimension - 1]
+            return f"energy = {case.energy:.6g} {unit}   (static field: E and D; no H)"
         if self.has_modes or hasattr(case, "neff"):
             selected = case.mode(mode) if self.has_modes else case
             neff = complex(selected.neff)
@@ -281,7 +287,9 @@ class ResultViewer:
             if self._component.currentText() == "RCS":
                 return ["m²" if self._source.is_3d else "m"]
             return ["real", "imag", "magnitude"]
-        if not self._source.static and self._component.currentText() in _TRANSVERSE_COMPONENTS:
+        if (not self._source.static and
+                (self._component.currentText() in (*_TRANSVERSE_COMPONENTS, "E vector", "H vector")
+                 or self._source.is_3d and self._component.currentText() in ("E", "H"))):
             return ['real', 'imag', 'magnitude']
         return list(_STATIC_QUANTITIES if self._source.static else _QUANTITIES)
 
@@ -388,7 +396,7 @@ class ResultViewer:
             if self._source.antenna and component in ("S-parameters", "Frequency sweep"):
                 result = case if component == "S-parameters" else self._source.result
                 widget = self._matplotlib(result.plot(quantity=quantity))
-            elif self._source.is_3d:
+            elif self._source.is_3d or component.endswith(" vector"):
                 widget, message = self._pyvista(case, mode, component, quantity)
             else:
                 widget, message = self._field_2d(case, mode, component, quantity)
@@ -484,7 +492,10 @@ class ResultViewer:
 
         plotter = QtInteractor(self._window)
         overlays = dict(mesh_overlay=self._mesh.isChecked(), material=self._material.isChecked())
-        if self._source.antenna:
+        if self._source.static:
+            from fem.electrostatics.result_api import draw_3d
+            message = draw_3d(plotter, case, component, quantity, **overlays)
+        elif self._source.antenna:
             from fem.antenna.visualization import draw_3d
             message, self._update_phase = draw_3d(plotter, case, component, quantity,
                                                   phase_deg=self._phase.value(), **overlays)
@@ -492,7 +503,8 @@ class ResultViewer:
             from fem.scattering.visualization import draw_3d
             message = draw_3d(plotter, case, component, quantity, **overlays)
         else:
-            message = populate_3d(plotter, case.mode(mode), self._source.mesh_data(case), component,
+            message = populate_3d(plotter, case.mode(mode), self._source.mesh_data(case),
+                                  component.removesuffix(" vector"),
                                   quantity, boundary_facets=case.metadata.get("boundary_facets"),
                                   **overlays)
         self._plotter = plotter
@@ -539,10 +551,24 @@ def _transverse_overlays(ax, source, mesh, mesh_overlay, material):
     return message
 
 
+def plot_mode_vector(result, mode, component, quantity):
+    """Create a rotatable full-vector view, including the longitudinal component."""
+    import pyvista as pv
+    if quantity not in ("real", "imag", "magnitude"):
+        raise ValueError("Vector arrows support real, imag, or magnitude.")
+    plotter = pv.Plotter()
+    try:
+        populate_3d(plotter, result.mode(mode), result.mesh_data, component[0], quantity)
+    except Exception:
+        plotter.close()
+        raise
+    return plotter
+
+
 def populate_3d(plotter: Any, mode: Any, mesh: Any, component: str, quantity: str, *,
                 mesh_overlay: bool = False, material: bool = False,
                 boundary_facets: Any = None) -> str:
-    """Draw one 3D periodic mode into a PyVista plotter; return a status message.
+    """Draw a mode in its sampling plane or volume in a PyVista plotter.
 
     ``E``/``H`` and transverse ``Et``/``Ht`` are arrows; Cartesian components are coloured points.
     The mesh is a wireframe; Material shows translucent regions and boundary surfaces.
@@ -551,18 +577,29 @@ def populate_3d(plotter: Any, mode: Any, mesh: Any, component: str, quantity: st
     import pyvista as pv
 
     fields = mode.fields
-    points = np.asarray(fields.coordinates, dtype=float)
+    points = fields.coordinates
+    local_waveguide = isinstance(points, tuple)
+    if local_waveguide:
+        points = np.column_stack([np.asarray(axis).ravel() for axis in points])
+    points = np.asarray(points, dtype=float)
+    sample_axes = None
+    if points.shape[1] < 3:
+        # Waveguide port modes store their components in the local port basis.
+        sample_axes = ("x", "y")[:points.shape[1]] if local_waveguide else ("x", "z")
+        points = _spatial_points(points, sample_axes)
     if component in ('E', 'H', *_TRANSVERSE_COMPONENTS):
         axes = 'xy' if component in _TRANSVERSE_COMPONENTS else 'xyz'
-        components = [fields.component(f"{component[0]}{axis}")
+        components = [np.asarray(fields.component(f"{component[0]}{axis}")).ravel()
                       if f'{component[0]}{axis}' in fields.components else np.zeros(len(points))
                       for axis in axes]
         if component in _TRANSVERSE_COMPONENTS:
             components.append(np.zeros_like(components[0]))
-            if quantity == 'magnitude':
-                components = aligned_components(components)
-        add_arrows(plotter, points, components,
-                   quantity, label=f"|{component}|")
+        if sample_axes is not None:
+            points, components = cell_vector_samples(fields, points, components)
+        if quantity == 'magnitude':
+            components = aligned_components(components)
+        label = {"E": "|E| (V/m)", "H": "|H| (A/m)"}.get(component, f"|{component}|")
+        add_arrows(plotter, points, components, quantity, label=label)
     else:
         cloud = pv.PolyData(points)
         label = f"{quantity}({component})"
@@ -570,14 +607,16 @@ def populate_3d(plotter: Any, mode: Any, mesh: Any, component: str, quantity: st
         plotter.add_mesh(cloud, scalars=label, cmap="RdBu_r" if quantity in ("real", "imag") else "viridis",
                          render_points_as_spheres=True, point_size=6)
     return add_3d_overlays(plotter, mesh, mesh_overlay=mesh_overlay, material=material,
-                           boundary_facets=boundary_facets)
+                           boundary_facets=boundary_facets, sample_axes=sample_axes)
 
 
-def add_3d_overlays(plotter, mesh, *, mesh_overlay, material, boundary_facets=None):
+def add_3d_overlays(plotter, mesh, *, mesh_overlay, material, boundary_facets=None, sample_axes=None):
     import pyvista as pv
 
     message = ""
     if mesh is not None and (mesh_overlay or material):
+        if len(mesh.axes) < 3:
+            return _planar_vector_overlays(plotter, mesh, mesh_overlay, material, axes=sample_axes)
         grid = _tetra_grid(mesh)
         if material:
             legend = []
@@ -646,6 +685,38 @@ def _region_colours(labels: list[str]) -> list[Any]:
             colours.append(palette[others % len(palette)])
             others += 1
     return colours
+
+
+def _spatial_points(points, axes):
+    xyz = np.zeros((len(points), 3))
+    for column, axis in enumerate(axes):
+        xyz[:, "xyz".index(axis)] = points[:, column]
+    return xyz
+
+
+def _planar_vector_overlays(plotter, mesh, mesh_overlay, material, *, axes=None):
+    import pyvista as pv
+    points = _spatial_points(mesh.coordinates, axes or mesh.axes)
+    cells = mesh.elements
+    n = cells.shape[1]
+    cell_type = pv.CellType.LINE if n == 2 else pv.CellType.TRIANGLE
+    grid = pv.UnstructuredGrid(np.column_stack((np.full(len(cells), n), cells)).ravel(),
+                               np.full(len(cells), cell_type), points)
+    message = ""
+    if material:
+        regions = cell_materials(mesh)
+        if regions is None:
+            message = "This result records no material regions."
+        else:
+            indices, labels = regions
+            for i, (label, colour) in enumerate(zip(labels, _region_colours(labels))):
+                plotter.add_mesh(grid.extract_cells(np.flatnonzero(indices == i)), color=_hex(colour),
+                                 opacity=.25, label=label)
+            plotter.add_legend()
+    if mesh_overlay:
+        plotter.add_mesh(grid, style="wireframe", color="black", opacity=.25)
+    plotter.add_axes()
+    return message
 
 
 def _tetra_grid(mesh: Any):

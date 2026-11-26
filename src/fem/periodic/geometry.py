@@ -386,16 +386,19 @@ class GeometryModel2D(_GeometryBase):
         return epsilon, mu
 
     def transformed_material_at(self, x: ArrayLike, z: ArrayLike) -> tuple[NDArray[np.complex128], NDArray[np.complex128]]:
+        epsilon, mu = self.material_at(x, z)
+        factors = self.pml_factors(x, z)
+        return factors * epsilon, factors * mu
+
+    def pml_factors(self, x, z):
         xa, za = np.broadcast_arrays(np.asarray(x, float), np.asarray(z, float))
-        epsilon, mu = self.material_at(xa, za)
         sx = np.ones(xa.shape, dtype=np.complex128)
         for pml in self.pmls:
             if pml.direction in ("x-", "x"):
                 sx *= pml.stretch(np.maximum(self.x_span[0] + pml.thickness - xa, 0.0))
             if pml.direction in ("x+", "x"):
                 sx *= pml.stretch(np.maximum(xa - (self.x_span[1] - pml.thickness), 0.0))
-        factors = np.stack((1.0 / sx, sx, sx))
-        return factors * epsilon, factors * mu
+        return np.stack((1.0 / sx, sx, sx))
 
     def pml_mask(self, x: ArrayLike) -> NDArray[np.bool_]:
         values = np.asarray(x, float)
@@ -529,10 +532,14 @@ class GeometryModel3D(_GeometryBase):
     def transformed_material_at(
         self, x: ArrayLike, y: ArrayLike, z: ArrayLike
     ) -> tuple[NDArray[np.complex128], NDArray[np.complex128]]:
+        epsilon, mu = self.material_at(x, y, z)
+        factors = self.pml_factors(x, y, z)
+        return factors * epsilon, factors * mu
+
+    def pml_factors(self, x, y, z):
         xa, ya, za = np.broadcast_arrays(
             np.asarray(x, float), np.asarray(y, float), np.asarray(z, float)
         )
-        epsilon, mu = self.material_at(xa, ya, za)
         sx = np.ones(xa.shape, dtype=np.complex128)
         sy = np.ones(xa.shape, dtype=np.complex128)
         for pml in self.pmls:
@@ -553,8 +560,7 @@ class GeometryModel3D(_GeometryBase):
                 sy *= pml.stretch(
                     np.maximum(ya - (self.y_span[1] - pml.thickness), 0.0)
                 )
-        factors = np.stack((sy / sx, sx / sy, sx * sy))
-        return factors * epsilon, factors * mu
+        return np.stack((sy / sx, sx / sy, sx * sy))
 
     def pml_mask(self, x: ArrayLike, y: ArrayLike) -> NDArray[np.bool_]:
         xa, ya = np.broadcast_arrays(np.asarray(x, float), np.asarray(y, float))

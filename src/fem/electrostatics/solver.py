@@ -1,4 +1,4 @@
-"""Geometry-first 1D/2D finite-element electrostatic solver."""
+"""Geometry-first finite-element electrostatic solver."""
 
 from __future__ import annotations
 from fem.common import materials
@@ -19,7 +19,7 @@ from numpy.typing import NDArray
 
 from .exceptions import GeometryError, NotDiscretizedError, SolverError
 from .geometry import ChargeRegion, Circle, GeometryModel, Interval, MaterialRegion, Permittivity, Polygon, PotentialRegion, Rectangle
-from .meshing import FEMMesh, discretize_1d, discretize_2d
+from .meshing import FEMMesh, discretize_1d, discretize_simplices
 from .results import ElectrostaticResult
 
 
@@ -28,8 +28,8 @@ RegionInput: TypeAlias = Interval | Rectangle | Circle | Polygon | str
 
 
 def _dimension(value: int) -> int:
-    if isinstance(value, (bool, np.bool_)) or int(value) != value or int(value) not in (1, 2):
-        raise GeometryError("dim must be 1 or 2.")
+    if isinstance(value, (bool, np.bool_)) or int(value) != value or int(value) not in (1, 2, 3):
+        raise GeometryError("dim must be 1, 2, or 3.")
     return int(value)
 
 
@@ -47,18 +47,22 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
 
     def __init__(self, *, dim: int = 2, x_range: float | Sequence[float] = 1.0,
                  y_range: float | Sequence[float] | None = None,
+                 z_range: float | Sequence[float] | None = None,
                  background_material: materials.Material = materials.vacuum,
                  outer_potential: float | None = 0.0) -> None:
         self.dim = _dimension(dim)
-        self._physical_axes = ("x",) if self.dim == 1 else ("x", "y")
+        self._physical_axes = ("x", "y", "z")[:self.dim]
         self._init_scene(background_material=background_material)
         background_epsilon = static_epsilon(background_material, self.dim)
         if self.dim == 1 and y_range is not None:
-            raise GeometryError("y_range is only valid for dim=2.")
+            raise GeometryError("y_range requires dim=2 or dim=3.")
         x_span = bounds(x_range, "x_range")
         y_span = None if self.dim == 1 else bounds(1.0 if y_range is None else y_range, "y_range")
+        if self.dim != 3 and z_range is not None:
+            raise GeometryError("z_range requires dim=3.")
+        z_span = bounds(1.0 if z_range is None else z_range, "z_range") if self.dim == 3 else None
         self.geometry = GeometryModel(self.dim, x_span, y_span,
-            Permittivity.from_input(background_epsilon, self.dim))
+            Permittivity.from_input(background_epsilon, self.dim), z_span)
         self.outer_potential = None if outer_potential is None else finite_real(outer_potential, "outer_potential")
         self.mesh_data = None
         self._result = None
@@ -73,6 +77,10 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
     @property
     def y_range(self):
         return self.geometry.y_span
+
+    @property
+    def z_range(self):
+        return self.geometry.z_span
 
     @property
     def result(self):
@@ -150,7 +158,10 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
 
     def _default_maximum_size(self) -> float:
         width = self.x_range[1] - self.x_range[0]
-        return width / 16 if self.dim == 1 else min(width, self.y_range[1] - self.y_range[0]) / 6
+        if self.dim == 1:
+            return width / 16
+        spans = (self.x_range, self.y_range, self.z_range)[:self.dim]
+        return min(hi - lo for lo, hi in spans) / 6
 
 
     def mesh(
@@ -164,6 +175,7 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
         boundary_refinement: float | None = 0.5,
         interface_refinement_width: float | None = None,
         boundary_refinement_width: float | None = None,
+        geometry_tolerance: float | None = None,
     ) -> FEMMesh:
         """Discretize after geometry; high-Dk regions and boundaries refine locally."""
         self._require_conductor_potentials()
@@ -177,8 +189,11 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
             "boundary_refinement": boundary_refinement,
             "interface_refinement_width": interface_refinement_width,
             "boundary_refinement_width": boundary_refinement_width,
+            "geometry_tolerance": geometry_tolerance,
         }
         if self.dim == 1:
+            if geometry_tolerance is not None:
+                positive_real(geometry_tolerance, "geometry_tolerance")
             self.mesh_data = discretize_1d(
                 self.geometry,
                 max_element_size=float(maximum),
@@ -187,13 +202,13 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
                 boundary_refinement=boundary_refinement,
             )
         else:
-            self.mesh_data = discretize_2d(self.geometry, **settings)
+            self.mesh_data = discretize_simplices(self.geometry, **settings)
         self.mesh_data = replace(self.mesh_data, info=replace(self.mesh_data.info, element_order=element_order))
         self._discretization_settings = dict(settings, element_order=element_order, quadrature_order=quadrature_order)
         self._clear_solution()
         return self.mesh_data
 
-    def _boundary_mask(self, selector: str, basis) -> NDArray[np.bool_]:
+    def _boundary_facets(self, selector: str):
         assert self.mesh_data is not None
         mesh = self.mesh_data.mesh
         indices = mesh.boundary_facets()
@@ -205,33 +220,49 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
             x0, x1 = self.x_range
             sides = ["left", "right"]
             distances = [abs(centers[0] - x0), abs(centers[0] - x1)]
-            if self.dim == 2:
+            if self.dim >= 2:
                 y0, y1 = self.y_range
                 sides.extend(("bottom", "top"))
                 distances.extend((abs(centers[1] - y0), abs(centers[1] - y1)))
+            if self.dim == 3:
+                z0, z1 = self.z_range
+                sides.extend(("front", "back"))
+                distances.extend((abs(centers[2] - z0), abs(centers[2] - z1)))
             indices = indices[np.argmin(distances, axis=0) == sides.index(selector)]
-        mask = np.zeros(basis.N, dtype=bool)
-        mask[basis.get_dofs(facets=indices).all()] = True
-        return mask
+        return indices
 
-    def _dirichlet_data(self, basis) -> tuple[NDArray[np.bool_], NDArray[np.float64], dict[str, NDArray[np.bool_]]]:
+    def _dirichlet_data(self, basis):
         assert self.mesh_data is not None
         nodes = basis.doflocs.T
         fixed = np.zeros(len(nodes), dtype=bool)
         values = np.zeros(len(nodes), dtype=float)
         named_masks: dict[str, NDArray[np.bool_]] = {}
+        prescribed = np.zeros(basis.mesh.nfacets, dtype=bool)
+
+        def boundary_mask(selector):
+            facets = self._boundary_facets(selector)
+            prescribed[facets] = True
+            mask = np.zeros(basis.N, dtype=bool)
+            mask[basis.get_dofs(facets=facets).all()] = True
+            return mask
+
         if self.outer_potential is not None:
-            mask = self._boundary_mask("outer", basis)
+            mask = boundary_mask("outer")
             fixed[mask] = True
             values[mask] = self.outer_potential
             named_masks["outer"] = mask.copy()
         for region in self.geometry.potentials:
             if isinstance(region.shape, str):
-                mask = self._boundary_mask(region.shape, basis)
+                mask = boundary_mask(region.shape)
             elif self.dim == 1:
                 mask = np.asarray(region.shape.contains(nodes[:, 0]), dtype=bool)  # type: ignore[union-attr]
             else:
-                mask = np.asarray(region.shape.contains(nodes[:, 0], nodes[:, 1]), dtype=bool)  # type: ignore[union-attr]
+                cells = np.flatnonzero(self.mesh_data.potential_cells[region.id])
+                mask = np.zeros(basis.N, dtype=bool)
+                mask[basis.element_dofs[:, cells]] = True
+                prescribed[basis.mesh.t2f[:, cells]] = True
+            if self.dim == 1 and not isinstance(region.shape, str):
+                prescribed |= mask[basis.mesh.facets[0]]
             if not np.any(mask):
                 raise SolverError(f"fixed-potential region {region.name!r} selected no mesh nodes.")
             # Later geometry wins consistently for both voltage and reaction-
@@ -243,32 +274,23 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
             named_masks[region.name] = mask.copy()
         if not np.any(fixed):
             raise SolverError("the electrostatic problem needs at least one fixed-potential constraint.")
-        return fixed, values, named_masks
+        return fixed, values, named_masks, prescribed
 
     def _assemble(self):
         assert self.mesh_data is not None
         try:
             from skfem import Basis, BilinearForm, LinearForm, asm
-            from skfem.element import ElementLineP1, ElementLineP2, ElementTriP1, ElementTriP2
+            from skfem.element import ElementLineP1, ElementLineP2, ElementTriP1, ElementTriP2, ElementTetP1, ElementTetP2
             from skfem.helpers import grad
         except Exception as exc:
             raise SolverError("scikit-fem could not be imported; install the package dependencies.") from exc
-        elements = (ElementLineP1, ElementLineP2) if self.dim == 1 else (ElementTriP1, ElementTriP2)
+        elements = ((ElementLineP1, ElementLineP2), (ElementTriP1, ElementTriP2), (ElementTetP1, ElementTetP2))[self.dim - 1]
         basis = Basis(self.mesh_data.mesh, elements[self.mesh_data.info.element_order - 1](),
                       intorder=self._discretization_settings["quadrature_order"])
-        if self.dim == 1:
-            @BilinearForm
-            def stiffness(u: object, v: object, w: object) -> object:
-                return EPSILON_0 * w.e00 * grad(u)[0] * grad(v)[0]
-        else:
-            @BilinearForm
-            def stiffness(u: object, v: object, w: object) -> object:
-                du, dv = grad(u), grad(v)
-                return EPSILON_0 * (
-                    w.e00 * du[0] * dv[0]
-                    + w.e01 * (du[0] * dv[1] + du[1] * dv[0])
-                    + w.e11 * du[1] * dv[1]
-                )
+        @BilinearForm
+        def stiffness(u, v, w):
+            return EPSILON_0 * np.einsum("ij...,i...,j...->...", w.epsilon, grad(u), grad(v))
+
         @LinearForm
         def source(v: object, w: object) -> object:
             return w.rho * v
@@ -281,15 +303,15 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
             contribution = asm(
                 stiffness,
                 basis.with_elements(indices),
-                e00=float(tensor[0, 0]),
-                e01=0.0 if self.dim == 1 else float(tensor[0, 1]),
-                e11=0.0 if self.dim == 1 else float(tensor[1, 1]),
+                epsilon=tensor[:, :, None, None],
             )
             matrix = contribution if matrix is None else matrix + contribution
         if matrix is None:
             raise SolverError("the FEM mesh contains no material elements.")
         centers = self.mesh_data.nodes[self.mesh_data.elements].mean(axis=1)
-        densities = self.geometry.charge_at(centers)
+        densities = self.mesh_data.charge_density
+        if densities is None:
+            densities = self.geometry.charge_at(centers)
         rhs = np.zeros(basis.N, dtype=float)
         for density in np.unique(densities):
             if density != 0.0:
@@ -338,6 +360,7 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
         """
         from fem.common.linalg import resolve_backend
         backend = resolve_backend(backend)
+        from fem.adaptivity.policy import mesh_quality
         from .adaptive import flux_indicators, refine_marked
 
         for value, name, minimum in (
@@ -365,14 +388,17 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
         history = []
         for step in range(int(max_refinements) + 1):
             centers = result.coordinates[result.elements].mean(axis=1)
+            charge = result.mesh.charge_density
+            if charge is None:
+                charge = self.geometry.charge_at(centers)
             indicators, error = flux_indicators(
                 result.mesh, result.element_displacement_field,
-                self.geometry.charge_at(centers), self.fixed_mask, self._corner_displacement,
+                charge, self._prescribed_facets, self._corner_displacement,
             )
             if not np.isfinite(error):
                 raise SolverError("The adaptive flux indicator is non-finite.")
             record = {"elements": len(result.elements), "relative_indicator": error, "residual": error,
-                      "marked_elements": 0, "status": "refined"}
+                      "marked_elements": 0, "status": "refined", **mesh_quality(result.mesh.mesh)}
             history.append(record)
             if error <= adaptive_tolerance:
                 record["status"] = "tolerance"
@@ -387,7 +413,17 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
             count = int(np.searchsorted(np.cumsum(indicators[ranked]),
                                        marking_fraction * indicators.sum())) + 1
             marked = ranked[:count]
-            candidate = refine_marked(result.mesh, marked)
+            if self.dim == 3 or result.mesh.has_curves:
+                from fem.common._mesh_sizing import nodal_size_targets
+                sizes = nodal_size_targets(result.coordinates, result.elements, marked,
+                                           result.mesh.info.requested_maximum_edge)
+                settings = self._discretization_settings.copy()
+                order = settings.pop("element_order")
+                settings.pop("quadrature_order")
+                candidate = discretize_simplices(self.geometry, adaptive_sizes=sizes, **settings)
+                candidate = replace(candidate, info=replace(candidate.info, element_order=order))
+            else:
+                candidate = refine_marked(result.mesh, marked)
             if len(candidate.elements) > max_elements:
                 record["status"] = "element_limit"
                 break
@@ -420,7 +456,7 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
             self.mesh(**(self._discretization_settings or {}))
         assert self.mesh_data is not None
         matrix, rhs, basis = self._assemble()
-        fixed, values, named_masks = self._dirichlet_data(basis)
+        fixed, values, named_masks, prescribed = self._dirichlet_data(basis)
         free = ~fixed
         potential = values.copy()
         if np.any(free):
@@ -428,13 +464,17 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
                 from scipy.sparse.linalg import MatrixRankWarning, spsolve
                 import warnings
                 reduced_rhs = rhs[free] - matrix[free][:, fixed] @ potential[fixed]
+                reduced = matrix[free][:, free]
                 with warnings.catch_warnings():
                     warnings.simplefilter("error", MatrixRankWarning)
                     if backend in ("gpu", "hybrid"):
                         from fem.common.gpu import solve_sparse
-                        potential[free] = solve_sparse(matrix[free][:, free], reduced_rhs).real
+                        # In 3D the stiffness scales as epsilon_0 times a length.
+                        # Put its pivots on a unit scale before cuDSS factorization.
+                        scale = np.max(reduced.diagonal())
+                        potential[free] = solve_sparse(reduced / scale, reduced_rhs / scale).real
                     else:
-                        potential[free] = spsolve(matrix[free][:, free], reduced_rhs)
+                        potential[free] = spsolve(reduced, reduced_rhs)
             except Exception as exc:
                 raise SolverError(f"the sparse FEM system could not be solved: {exc}") from exc
         if not np.isfinite(potential).all():
@@ -456,7 +496,8 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
         n = basis.mesh.nvertices
         vertex_reaction = reaction[:n].copy()
         if basis.elem.maxdeg == 2:
-            edges = basis.mesh.t if self.dim == 1 else basis.mesh.facets
+            edges = (basis.mesh.t if self.dim == 1 else
+                     basis.mesh.facets if self.dim == 2 else basis.mesh.edges)
             np.add.at(vertex_reaction, edges, np.broadcast_to(reaction[n:] / 2, edges.shape))
         result = ElectrostaticResult(
             mesh=self.mesh_data,
@@ -474,15 +515,16 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
         self._result = result
         self.potential = result.potential
         self.fixed_mask = fixed[:n]
+        self._prescribed_facets = prescribed
         self._corner_displacement = corner_d
         return result
 
-    def compute_electric_field(self) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
+    def compute_electric_field(self) -> NDArray[np.float64] | tuple[NDArray[np.float64], ...]:
         if self._result is None:
             raise SolverError("call solve() before computing the electric field.")
         if self.dim == 1:
             return self._result.electric_field[:, 0]
-        return self._result.electric_field[:, 0], self._result.electric_field[:, 1]
+        return tuple(self._result.electric_field.T)
 
 
 

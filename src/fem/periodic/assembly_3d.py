@@ -8,6 +8,7 @@ from typing import TypeAlias
 
 from fem.common.discretization import DEFAULT_QUADRATURE_ORDER
 import numpy as np
+from fem.common._cell_material import CellMaterial
 from numpy.typing import ArrayLike, NDArray
 from scipy.sparse import bmat, csc_matrix, csr_matrix, eye
 from scipy.sparse.linalg import norm as sparse_norm
@@ -64,7 +65,8 @@ def evaluate_material_3d(
     y: NDArray[np.floating],
     z: NDArray[np.floating],
 ) -> tuple[ComplexArray, ComplexArray]:
-    epsilon, mu = material_at(x, y, z)
+    evaluate = material_at.on_cells if isinstance(material_at, CellMaterial) else material_at
+    epsilon, mu = evaluate(x, y, z)
     eps = _as_diagonal_field(epsilon, x.shape, "epsilon")
     permeability = _as_diagonal_field(mu, x.shape, "mu")
     if np.any(np.abs(eps) == 0.0) or np.any(np.abs(permeability) == 0.0):

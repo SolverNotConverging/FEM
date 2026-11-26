@@ -68,6 +68,9 @@ def save_result(result, path): return save_periodic_h5(result, path)
 
 
 def plot_result(result, *, component=None, quantity="real", mode=0):
+    if component in ("E vector", "H vector"):
+        from fem.common.viewer import plot_mode_vector
+        return plot_mode_vector(result, mode, component, quantity)
     from .visualization import visualize
     from matplotlib.figure import Figure
     figure = Figure()

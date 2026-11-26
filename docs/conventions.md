@@ -4,7 +4,7 @@
 
 | Family | Domain | Materials | Guide |
 |---|---|---|---|
-| Electrostatics | 1D or 2D | Positive scalar, diagonal, or symmetric positive-definite permittivity | [Electrostatics](solvers/electrostatics.rst) |
+| Electrostatics | 1D, 2D or 3D | Positive scalar, diagonal, or symmetric positive-definite permittivity | [Electrostatics](solvers/electrostatics.rst) |
 | Waveguide modes | 1D or 2D cross-section | Scalar or diagonal permittivity/permeability | [Waveguide modes](solvers/waveguide.rst) |
 | Periodic modes | 2D or 3D periodic cell | Scalar or diagonal permittivity/permeability | [Periodic modes](solvers/periodic.rst) |
 | Scattering | 2D xy (TE/Hz or TM/Ez), 3D vector E | Scalar permittivity/permeability, PEC and SIBC | [Scattering](solvers/scattering.rst) |
@@ -30,7 +30,7 @@ The integration degree defaults to 5 for every solver.
 
 | Solver | Default field element order |
 | --- | --- |
-| Electrostatics, 1D and 2D | 2 |
+| Electrostatics, 1D, 2D and 3D | 2 |
 | Waveguide modes, 1D | 2 |
 | Waveguide modes, 2D | 2 |
 | Periodic modes, 2D and 3D | 2 |

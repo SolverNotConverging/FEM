@@ -116,11 +116,11 @@ class _PlaneWaveSolver(RadiationBoxSolver):
         self._size, self.result = size, None
         return self.mesh_data
 
-    def solve(self, *, backend="auto", max_refinements=2, adaptive_tolerance=0.05):
-        """Adapt the physical mesh until the relative interface residual meets tolerance or the budget is spent."""
+    def solve(self, *, backend="auto", max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None):
+        """Adapt the physical mesh using the relative volume, interface and boundary residual."""
         selected = resolve_backend(backend)
         return run_adaptive(self, lambda: self._solve_once(selected), lambda result: self._estimate,
-                            self._refine_driven, max_refinements=max_refinements,
+                            self._refine_driven, max_refinements=max_refinements, max_elements=max_elements, max_dofs=max_dofs,
                             adaptive_tolerance=adaptive_tolerance, error_type=ConfigurationError)
 
     def _solve_once(self, selected):
@@ -173,6 +173,7 @@ class _PlaneWaveSolver(RadiationBoxSolver):
         coeff = np.zeros(basis.N, dtype=complex)
         prescribed = list(basis.get_dofs(facets=self._pml_wall).all())
         pec_traces = []
+        natural_walls = []
         for owner, facets in self._faces.items():
             material = self._regions[owner - 1][1]
             metal = FacetBasis(mesh, element, facets=facets, intorder=quadrature)
@@ -183,6 +184,7 @@ class _PlaneWaveSolver(RadiationBoxSolver):
                 admittance = z if self.polarization == "TE" else 1 / z
                 matrix = matrix + admittance * asm(impedance_trace, metal)
             if not pec or self.polarization == "TE":
+                natural_walls.append((facets, admittance))
                 @LinearForm(dtype=complex)
                 def metal_load(v, w):
                     u, du = incident(w.x), incident_derivative(w.x)
@@ -236,7 +238,7 @@ class _PlaneWaveSolver(RadiationBoxSolver):
             raise SolverError("The plane-wave linear solve returned nonfinite coefficients.")
 
         self._estimate = driven_residual(basis, coeff, b.ravel(), a.ravel(), k, quadrature,
-                                         incident, incident_derivative)
+                                         incident, incident_derivative, walls=natural_walls)
         positions, current, moment = _monitor_sources(basis, self._surface, coeff, k, quadrature)
         incident_transverse = scattered_transverse = None
         scattered_h = None

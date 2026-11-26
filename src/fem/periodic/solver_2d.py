@@ -16,6 +16,8 @@ from typing import Any, Literal, TypeAlias
 from fem.common.discretization import DEFAULT_QUADRATURE_ORDER, field_orders
 from skfem import Basis
 import numpy as np
+from fem.adaptivity._budget import check_candidate
+from fem.common._cell_material import CellMaterial
 from numpy.typing import NDArray
 
 from .assembly_2d import (
@@ -44,7 +46,7 @@ from .geometry import (
     Shape2D,
 )
 from fem.common.diagonal import DiagonalMaterial, MaterialInput
-from .meshing_2d import FEMPeriodicMesh2D, discretize_periodic_2d
+from .meshing_2d import FEMPeriodicMesh2D, _material_scale, discretize_periodic_2d
 from .results import PeriodicMode, PeriodicModeSet, PeriodicSampledFields
 
 ComplexArray: TypeAlias = NDArray[np.complex128]
@@ -220,15 +222,16 @@ class PeriodicModeSolver2D(PeriodicScene2D, ModalSolverMixin):
 
 
     def _background_index(self) -> float:
-        epsilon = np.asarray(self.geometry.background.eps_r)
-        mu = np.asarray(self.geometry.background.mu_r)
-        return float(np.sqrt(np.max(np.abs(epsilon * mu))))
+        return _material_scale(self.geometry.background)
 
     def _mesh_impl(
         self,
         *,
+        geometry_tolerance: float | None = None,
+        adaptive_sizes=None,
         max_element_size: float | None = None,
         resolution: tuple[int, int] | None = None,
+        pml_layers: int = 3,
         wavelength_elements: int = 4,
         element_order: int = 2,
         quadrature_order: int = DEFAULT_QUADRATURE_ORDER,
@@ -251,9 +254,13 @@ class PeriodicModeSolver2D(PeriodicScene2D, ModalSolverMixin):
 
         mesh_data = discretize_periodic_2d(
             self.geometry,
+            adaptive_sizes=adaptive_sizes,
+            geometry_tolerance=geometry_tolerance,
             max_element_size=maximum,
             element_order=order,
+            pml_layers=pml_layers,
         )
+        check_candidate(self, mesh_data.mesh, order)
         systems = self._assemble_mesh(mesh_data, quadrature)
         # Commit only after meshing and every polarization assembly succeed.
         # A failed refinement should leave the previous solved model usable.
@@ -263,6 +270,8 @@ class PeriodicModeSolver2D(PeriodicScene2D, ModalSolverMixin):
         self._discretized_revision = self.geometry.revision
         self._discretization_settings = {
             "max_element_size": maximum,
+            "geometry_tolerance": geometry_tolerance,
+            "pml_layers": pml_layers,
             "element_order": order,
             "quadrature_order": quadrature,
         }
@@ -279,7 +288,7 @@ class PeriodicModeSolver2D(PeriodicScene2D, ModalSolverMixin):
                 polarization=selected,  # type: ignore[arg-type]
                 frequency=self.frequency,
                 k0=self.k0,
-                material_at=self.geometry.transformed_material_at,
+                material_at=CellMaterial(self.geometry, mesh_data.element_tags),
                 quadrature_order=quadrature,
             )
             for selected in polarizations
@@ -293,6 +302,8 @@ class PeriodicModeSolver2D(PeriodicScene2D, ModalSolverMixin):
             raise ConfigurationError("factor must be greater than one.")
         return self._mesh_impl(
             max_element_size=float(self._discretization_settings["max_element_size"]) / refinement,
+            geometry_tolerance=self._discretization_settings["geometry_tolerance"],
+            pml_layers=self._discretization_settings["pml_layers"],
             element_order=int(self._discretization_settings["element_order"]),
             quadrature_order=int(self._discretization_settings["quadrature_order"]),
         )
@@ -329,10 +340,10 @@ class PeriodicModeSolver2D(PeriodicScene2D, ModalSolverMixin):
         gradient = np.asarray(field.grad, dtype=np.complex128)
         coordinates = np.asarray(system.basis.global_coordinates() / self.k0, dtype=np.float64)
         transformed_epsilon, transformed_mu = evaluate_material(
-            self.geometry.transformed_material_at, coordinates[0], coordinates[1]
+            system.material_at, coordinates[0], coordinates[1]
         )
         physical_epsilon, physical_mu = evaluate_material(
-            self.geometry.material_at, coordinates[0], coordinates[1]
+            system.material_at.bulk, coordinates[0], coordinates[1]
         )
         zeros = np.zeros_like(primary)
         if system.polarization == "TE":
@@ -389,12 +400,12 @@ class PeriodicModeSolver2D(PeriodicScene2D, ModalSolverMixin):
         gradient = sample.grad[:, :, 0].T
         coordinates = np.asarray(system.mesh_data.nodes[cells].mean(axis=1), dtype=np.float64)
         transformed_epsilon, transformed_mu = evaluate_material(
-            self.geometry.transformed_material_at,
+            system.material_at,
             coordinates[:, 0],
             coordinates[:, 1],
         )
         physical_epsilon, physical_mu = evaluate_material(
-            self.geometry.material_at,
+            system.material_at.bulk,
             coordinates[:, 0],
             coordinates[:, 1],
         )
@@ -513,13 +524,13 @@ class PeriodicModeSolver2D(PeriodicScene2D, ModalSolverMixin):
             return direction in ("forward", "right-decaying", "indeterminate")
         return direction in ("backward", "left-decaying")
 
-    def solve(self, *, neff_guess: complex | None=None, num_modes: int=4, direction: Direction='forward', eigensolver: str="auto", backend: str="auto", eigensolver_tolerance: float=1e-10, residual_tolerance: float=1e-08, propagation_ratio_tolerance: float=0.001, max_pml_fraction: float | None=0.5, dense_linearization_limit: int=700, max_refinements: int=2, adaptive_tolerance: float=0.05):
+    def solve(self, *, neff_guess: complex | None=None, num_modes: int=4, direction: Direction='forward', eigensolver: str="auto", backend: str="auto", eigensolver_tolerance: float=1e-10, residual_tolerance: float=1e-08, propagation_ratio_tolerance: float=0.001, max_pml_fraction: float | None=0.5, dense_linearization_limit: int=700, max_refinements: int=2, adaptive_tolerance: float=0.05, max_elements: int | None=None, max_dofs: int | None=None):
         """Solve and return modes with separate algebraic and adaptive controls."""
         from fem.common.linalg import resolve_eigen_backend
         backend = resolve_eigen_backend(backend)
         from .adaptive import solve_periodic
         options = {'neff_guess': neff_guess, 'num_modes': num_modes, 'direction': direction, 'eigensolver': eigensolver, 'backend': backend, 'eigensolver_tolerance': eigensolver_tolerance, 'residual_tolerance': residual_tolerance, 'propagation_ratio_tolerance': propagation_ratio_tolerance, 'max_pml_fraction': max_pml_fraction, 'dense_linearization_limit': dense_linearization_limit}
-        return self._finish_result(solve_periodic(self, 2, (), options, max_refinements, adaptive_tolerance))
+        return self._finish_result(solve_periodic(self, 2, (), options, max_refinements, adaptive_tolerance, max_elements, max_dofs))
 
 
     def _solve_once(
@@ -677,9 +688,9 @@ class PeriodicModeSolver2D(PeriodicScene2D, ModalSolverMixin):
             setattr(self, component, np.stack([mode.component(component) for mode in result]))
         return result
 
-    def mesh(self, *, max_element_size: float | None=None, resolution: tuple[int, int] | None=None, wavelength_elements: int=4, element_order: int=2, quadrature_order: int=DEFAULT_QUADRATURE_ORDER):
+    def mesh(self, *, geometry_tolerance: float | None=None, pml_layers: int=3, max_element_size: float | None=None, resolution: tuple[int, int] | None=None, wavelength_elements: int=4, element_order: int=2, quadrature_order: int=DEFAULT_QUADRATURE_ORDER):
         """Build the initial mesh; solve() may subsequently refine it."""
-        settings = {'max_element_size': max_element_size, 'resolution': resolution, 'wavelength_elements': wavelength_elements, 'element_order': element_order, 'quadrature_order': quadrature_order}
+        settings = {'geometry_tolerance': geometry_tolerance, 'pml_layers': pml_layers, 'max_element_size': max_element_size, 'resolution': resolution, 'wavelength_elements': wavelength_elements, 'element_order': element_order, 'quadrature_order': quadrature_order}
         mesh = self._mesh_impl(**settings)
         self._mesh_settings = settings
         self._result = None

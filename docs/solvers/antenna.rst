@@ -150,7 +150,7 @@ The sweep adapts at its highest frequency and reuses that final mesh for
 each lower frequency. Port modes and surface impedances are recomputed at
 each frequency. The drive weights apply throughout. Both ``solve()`` and
 ``sweep()`` default to ``max_refinements=2`` and ``adaptive_tolerance=0.05``.
-The largest relative interface residual across all independent port excitations
+The largest combined volume, interface and boundary residual across all independent port excitations
 controls early stopping. The highest-frequency case records the refinement
 history. Each case records ``mesh_adaptation_frequency`` in ``solve_info``.
 The volume defaults to second-order Nédélec tetrahedra with two degrees of

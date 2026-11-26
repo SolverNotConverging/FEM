@@ -16,7 +16,9 @@ from fem.common.pml import PMLSpec
 from fem.common.radiation_pml import extend_box
 from fem.common.validation import positive_integer, positive_real
 from fem.common.discretization import DEFAULT_QUADRATURE_ORDER
+from fem.adaptivity._budget import check_candidate
 from fem.adaptivity import bulk_mark
+from fem.common._mesh_sizing import append_size_view, nodal_size_targets, size_view
 
 _lock = RLock()
 
@@ -153,6 +155,7 @@ class RadiationBoxSolver(ElectromagneticSolverMixin):
             raise GeometryError("The physical interface of the PML must be in vacuum.")
         profiles = self._pml_profiles
         mesh = extend_box(physical, self._physical_ranges(profiles), profiles, self._pml_layers)
+        check_candidate(self, mesh, element_order)
         self._faces = {}
         for owner, facets in faces.items():
             if owner:
@@ -189,16 +192,7 @@ class RadiationBoxSolver(ElectromagneticSolverMixin):
     def _refine_driven(self, indicators):
         snapshot = self.mesh_data
         cells = snapshot.elements
-        coords = snapshot.coordinates[cells]
-        dim = coords.shape[2]
-        h = np.maximum.reduce([np.linalg.norm(coords[:, i] - coords[:, j], axis=1)
-                               for i in range(dim + 1) for j in range(i)])
-        # Keep the current local resolution and halve the length target on the
-        # cells carrying half the integrated squared flux-jump indicator.
-        h[bulk_mark(indicators)] *= 0.5
-        target = np.full(len(snapshot.coordinates), self._size)
-        np.minimum.at(target, cells.ravel(), np.repeat(h, dim + 1))
-        self._adaptive_sizes = (coords, target[cells])
+        self._adaptive_sizes = nodal_size_targets(snapshot.coordinates, cells, bulk_mark(indicators), self._size)
         try:
             self.mesh(max_element_size=self._size, **self._mesh_orders)
         finally:
@@ -217,9 +211,7 @@ def _local_sizes(gmsh, refinements, origin, scale, size, view, material_entities
         fields.setNumbers(field, "VolumesList" if dim == 3 else "SurfacesList", [entity])
         ids.append(field)
     if view is not None:
-        tag = fields.add("PostView")
-        fields.setNumber(tag, "ViewTag", view)
-        ids.append(tag)
+        append_size_view(gmsh, view, ids)
     for shape, local in refinements:
         if isinstance(shape, shapes.Circle):
             tag = fields.add("Ball")
@@ -296,12 +288,7 @@ def build_mesh(ranges, regions, size, *, interior_box=None, port_gaps=None, refi
                 owners[domain] = 0
             gmsh.model.occ.synchronize()
             if adaptive_sizes is not None:
-                coords, sizes = adaptive_sizes
-                xyz = np.zeros((len(coords), 3, dim + 1))
-                xyz[:, :dim] = ((coords - origin) * scale).transpose(0, 2, 1)
-                data = np.column_stack((xyz.reshape(len(coords), -1), sizes * scale))
-                view = gmsh.view.add("adaptive FEM element sizes")
-                gmsh.view.addListData(view, "ST" if dim == 2 else "SS", len(coords), data.ravel())
+                view = size_view(gmsh, adaptive_sizes, origin, scale)
             material_entities = {}
             if material_aware:
                 for entity, owner in owners.items():

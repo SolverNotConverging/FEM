@@ -25,8 +25,10 @@ Python mode and case indices are zero-based.
 results without solving. Archives use ``fem-results`` schema ``1.0``;
 old or convention-incompatible files raise ``PersistenceError``. Loaded
 results can plot, show, and save; they do not restart a solver or restore callbacks.
-``plot()`` returns a Matplotlib Figure without opening a window.
+``plot()`` returns a PyVista plotter for full E/H vector views or a Matplotlib Figure for other views without opening a window.
 ``show(block=True)`` waits for the viewer; ``block=False`` returns immediately.
+
+Select ``E vector`` or ``H vector`` for a rotatable plot of all three field components.
 
 The time convention is ``exp(+i*omega*t)`` with guided propagation
 ``exp(-i*beta*z)``. Passive materials have nonpositive imaginary constitutive
@@ -397,7 +399,7 @@ Returns: the initial mesh stored in ``mesh_data``.
 
 .. code-block:: python
 
-    ModeSolver1D.solve(*, neff_guess: 'complex | None' = None, num_modes: 'int' = 4, eigensolver_tolerance: 'float' = 1e-10, residual_tolerance: 'float' = 1e-07, dense_limit: 'int' = 450, backend: 'str' = 'auto', max_refinements: 'int' = 2, adaptive_tolerance: 'float' = 0.05)
+    ModeSolver1D.solve(*, neff_guess: 'complex | None' = None, num_modes: 'int' = 4, eigensolver_tolerance: 'float' = 1e-10, residual_tolerance: 'float' = 1e-07, dense_limit: 'int' = 450, backend: 'str' = 'auto', max_refinements: 'int' = 2, adaptive_tolerance: 'float' = 0.05, max_elements: 'int | None' = None, max_dofs: 'int | None' = None)
 
 Solve and return modes with separate algebraic and adaptive controls.
 
@@ -450,6 +452,16 @@ Solve and return modes with separate algebraic and adaptive controls.
      - Optional
      - ``0.05``
      - Relative discretization-residual stopping threshold.
+   * - ``max_elements``
+     - ``int | None``
+     - Optional
+     - ``None``
+     - Adaptive mesh element budget.
+   * - ``max_dofs``
+     - ``int | None``
+     - Optional
+     - ``None``
+     - Maximum field-space size on an adaptive candidate mesh before eliminating boundary DOFs.
 
 Returns: the physics-specific result stored in ``result``.
 
@@ -959,7 +971,7 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
 
 .. code-block:: python
 
-    ModeSolver2D.mesh(*, max_element_size: 'float | None' = None, resolution: 'tuple[int, int] | None' = None, wavelength_elements: 'int' = 4, material_aware: 'bool' = True, interface_refinement: 'float | None' = 0.7, interface_refinement_width: 'float | None' = None, boundary_refinement: 'float | None' = 0.5, boundary_refinement_width: 'float | None' = None, element_order: 'int' = 2, quadrature_order: 'int' = 5)
+    ModeSolver2D.mesh(*, geometry_tolerance: 'float | None' = None, max_element_size: 'float | None' = None, resolution: 'tuple[int, int] | None' = None, wavelength_elements: 'int' = 4, material_aware: 'bool' = True, interface_refinement: 'float | None' = 0.7, interface_refinement_width: 'float | None' = None, boundary_refinement: 'float | None' = 0.5, boundary_refinement_width: 'float | None' = None, element_order: 'int' = 2, quadrature_order: 'int' = 5)
 
 Build the initial mesh; solve() may subsequently refine it.
 
@@ -972,6 +984,11 @@ Build the initial mesh; solve() may subsequently refine it.
      - Required / optional
      - Default
      - Meaning
+   * - ``geometry_tolerance``
+     - ``float | None``
+     - Optional
+     - ``None``
+     - Target chord sagitta on curved CAD edges, in metres. None uses curvature-based sizing.
    * - ``max_element_size``
      - ``float | None``
      - Optional
@@ -1030,7 +1047,7 @@ Returns: the initial mesh stored in ``mesh_data``.
 
 .. code-block:: python
 
-    ModeSolver2D.solve(*, neff_guess: 'complex | None' = None, num_modes: 'int' = 4, direction: 'Direction' = 'forward', eigensolver_tolerance: 'float' = 1e-10, residual_tolerance: 'float' = 1e-08, divergence_tolerance: 'float' = 1e-07, propagation_ratio_tolerance: 'float' = 0.001, dense_linearization_limit: 'int' = 700, backend: 'str' = 'auto', max_refinements: 'int' = 2, adaptive_tolerance: 'float' = 0.05, track_modes: 'bool' = False, track_options: 'Mapping[str, Any] | None' = None)
+    ModeSolver2D.solve(*, neff_guess: 'complex | None' = None, num_modes: 'int' = 4, direction: 'Direction' = 'forward', eigensolver_tolerance: 'float' = 1e-10, residual_tolerance: 'float' = 1e-08, divergence_tolerance: 'float' = 1e-07, propagation_ratio_tolerance: 'float' = 0.001, dense_linearization_limit: 'int' = 700, backend: 'str' = 'auto', max_refinements: 'int' = 2, adaptive_tolerance: 'float' = 0.05, max_elements: 'int | None' = None, max_dofs: 'int | None' = None, track_modes: 'bool' = False, track_options: 'Mapping[str, Any] | None' = None)
 
 Solve modes, optionally identifying symmetry sectors and tracking fields.
 
@@ -1098,6 +1115,16 @@ Solve modes, optionally identifying symmetry sectors and tracking fields.
      - Optional
      - ``0.05``
      - Relative discretization-residual stopping threshold.
+   * - ``max_elements``
+     - ``int | None``
+     - Optional
+     - ``None``
+     - Adaptive mesh element budget.
+   * - ``max_dofs``
+     - ``int | None``
+     - Optional
+     - ``None``
+     - Maximum field-space size on an adaptive candidate mesh before eliminating boundary DOFs.
    * - ``track_modes``
      - ``bool``
      - Optional
@@ -1216,7 +1243,7 @@ and ``beta``; each mode provides sampled fields and residual diagnostics.
      - ``0``
      - Zero-based mode index.
 
-Returns: a Matplotlib Figure.
+Returns: a PyVista plotter for full E/H vector views or a Matplotlib Figure for other views.
 
 ``ModeSet.show``
 ~~~~~~~~~~~~~~~~

@@ -278,6 +278,10 @@ def test_shared_viewer_switches_fields_and_rcs(dim, polarization, tmp_path):
             skin = datasets["surface_current"]
             np.testing.assert_allclose(skin["Js_real"] + 1j * skin["Js_imag"],
                                        result.surface_current_vertices.reshape(-1, 3))
+        if dim == 2:
+            vectors = [f"{name} {symbol[0]} vector" for name in ("Incident", "Total", "Scattered")
+                       for symbol in symbols]
+            fields = fields[:-1] + vectors + ["RCS"]
         assert fields == [viewer._component.itemText(i) for i in range(viewer._component.count())]
         for component in fields:
             viewer._component.setCurrentText(component)
@@ -298,6 +302,9 @@ def test_shared_viewer_switches_fields_and_rcs(dim, polarization, tmp_path):
                     if component.endswith(" H"):
                         label = "|H| (A/m)"
                     assert any(label in data.point_data for data in datasets)
+            elif component.endswith(" vector"):
+                label = "|H| (A/m)" if " H " in component else "|E| (V/m)"
+                assert label in viewer._plotter.scalar_bars
             else:
                 from matplotlib.quiver import Quiver
                 ax = viewer._canvas.figure.axes[0]

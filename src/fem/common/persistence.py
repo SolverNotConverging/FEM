@@ -69,7 +69,7 @@ def validate_envelope(handle, *, family, static=False):
         raise PersistenceError("Incompatible spatial field representation.")
     dimension = handle.attrs["dimension"]
     dimensions = {"antenna": (3,), "waveguide_modes": (1, 2), "periodic_modes": (0, 2, 3),
-                  "plane_wave_scattering": (2, 3), "electrostatics": (1, 2)}
+                  "plane_wave_scattering": (2, 3), "electrostatics": (1, 2, 3)}
     if isinstance(dimension, (bool, np.bool_)) or not isinstance(dimension, (int, np.integer)) or dimension not in dimensions[family]:
         raise PersistenceError("Invalid archive mesh dimension.")
 

@@ -1,8 +1,6 @@
 """Compare adaptive FEM coaxial TEM fields with the analytical 1/r solution.
 
-The present backend responds to its Maxwell jump estimator by globally remeshing
-at h/1.5. This measures that actual adaptive solve workflow, including its budget
-and stopping diagnostics; it does not claim local element marking.
+Record mesh cost, algebraic and field residuals, and unit-power TEM field errors.
 """
 
 from fem.common import materials, shapes
@@ -85,21 +83,27 @@ def field_errors(mode):
     )
 
 
-def compare(max_refinements=4, adaptive_tolerance=.05):
+def compare(max_refinements=4, adaptive_tolerance=.05, *, uniform=False, field_target=None):
     rows, histories, meshes = [], [], []
     # Repeat the same initial mesh with increasing solve budgets because the
     # public result contains final fields, not intermediate field snapshots.
     for budget in range(max_refinements + 1):
         start = perf_counter()
         solver = make_solver()
+        if uniform:
+            for _ in range(budget):
+                solver.solve(num_modes=1, max_refinements=0, dense_linearization_limit=4, backend="cpu")
+                solver.refine(1.5)
         result = solver.solve(
-            num_modes=1, max_refinements=budget,
+            num_modes=1, backend="cpu", max_refinements=0 if uniform else budget,
             adaptive_tolerance=adaptive_tolerance, dense_linearization_limit=4,
         )
         mode = result[0]
         history = result.solve_info['adaptive_history']
         row = dict(
-            refinement_budget=budget, completed_refinements=history[-1]['refinement'],
+            strategy='uniform' if uniform else 'local', ndofs=solver.system.ndofs,
+            minimum_quality=history[-1]['minimum_quality'],
+            refinement_budget=budget, completed_refinements=budget if uniform else history[-1]['refinement'],
             elements=len(mode.fields.mesh_cells), nodes=len(mode.fields.mesh_points),
             frequency_hz=FREQUENCY, inner_radius_m=INNER_RADIUS, outer_radius_m=OUTER_RADIUS,
             neff_real=mode.neff.real, neff_imag=mode.neff.imag,
@@ -116,7 +120,9 @@ def compare(max_refinements=4, adaptive_tolerance=.05):
         print(f'Budget {budget}: {row["elements"]} triangles; E error={row["electric_relative_l2_error"]:.4%}; '
               f'neff error={row["absolute_neff_error"]:.3e}; estimator={row["adaptive_residual"]:.3e}; '
               f'{row["stopping_reason"]}', flush=True)
-        if row['adaptive_converged']:
+        if field_target is not None and row['electric_relative_l2_error'] <= field_target:
+            break
+        if row['adaptive_converged'] and not uniform:
             break
     return rows, histories, meshes
 
@@ -138,7 +144,7 @@ def save_report(output, rows, histories, meshes):
     ):
         axes[0].loglog(counts, [max(r[key], 1e-16) for r in rows], style, label=label)
     for key, label, style in (
-        ('adaptive_residual', 'Adaptive Maxwell jump estimator', 'o-'),
+        ('adaptive_residual', 'Adaptive Maxwell estimator', 'o-'),
         ('absolute_neff_error', '|neff - 1|', 's--'),
         ('algebraic_residual', 'Eigenproblem residual', '^:'),
     ):
@@ -158,12 +164,12 @@ def save_report(output, rows, histories, meshes):
         ax.triplot(points[:, 0]*1e3, points[:, 1]*1e3, cells, lw=.3, color='#34678a')
         ax.set_aspect('equal')
         ax.set(xlabel='x (mm)', ylabel='y (mm)', title=f'Budget {rows[index]["refinement_budget"]}: {len(cells)} triangles')
-    figure.suptitle('Coaxial FEM mesh: estimator-controlled global remeshing')
+    figure.suptitle('Coaxial FEM mesh: local adaptive refinement')
     figure.tight_layout()
     figure.savefig(output / 'meshes.png', dpi=160)
 
 
-def check(rows):
+def check(rows, field_target=.05):
     for row in rows:
         diagnostics = [row[key] for key in (
             'electric_relative_l2_error', 'magnetic_relative_l2_error',
@@ -177,8 +183,8 @@ def check(rows):
         if row['adaptive_converged'] != (row['adaptive_residual'] <= row['adaptive_tolerance']):
             raise ValueError('Adaptive stopping diagnostics are inconsistent.')
     for key in ('electric_relative_l2_error', 'magnetic_relative_l2_error'):
-        if rows[-1][key] >= .05:
-            raise ValueError(f'Finest {key} must be below 5%; increase the refinement budget.')
+        if rows[-1][key] > field_target:
+            raise ValueError(f'Finest {key} exceeds the {field_target:.2%} target.')
         if len(rows) > 1 and rows[-1][key] >= rows[0][key]:
             raise ValueError(f'Refinement did not reduce {key}.')
 
@@ -187,15 +193,29 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--max-refinements', type=int, default=4)
     parser.add_argument('--adaptive-tolerance', type=float, default=.05)
+    parser.add_argument('--field-target', type=float, help='Compare local and uniform refinement at this relative electric-field L2 error.')
     parser.add_argument('--output', type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument('--check', action='store_true', help='Check TEM index, forward power, and <5%% final field errors.')
+    parser.add_argument('--check', action='store_true', help='Check TEM index, forward power and final field errors (default 5%% target).')
     args = parser.parse_args()
     if args.max_refinements < 0 or not np.isfinite(args.adaptive_tolerance) or args.adaptive_tolerance <= 0:
         parser.error('Use a nonnegative refinement budget and finite positive tolerance.')
-    rows, histories, meshes = compare(args.max_refinements, args.adaptive_tolerance)
+    if args.field_target is not None and not 0 < args.field_target < 1:
+        parser.error('--field-target must lie between zero and one.')
+    tolerance = args.adaptive_tolerance if args.field_target is None else np.finfo(float).eps
+    rows, histories, meshes = compare(args.max_refinements, tolerance, field_target=args.field_target)
     save_report(args.output, rows, histories, meshes)
+    if args.field_target is not None:
+        uniform, _, _ = compare(args.max_refinements, tolerance, uniform=True, field_target=args.field_target)
+        with (args.output / "field_target.csv").open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(stream, fieldnames=[*rows[0], "field_target", "target_reached"])
+            writer.writeheader()
+            for row in [*rows, *uniform]:
+                writer.writerow(dict(row, field_target=args.field_target,
+                                     target_reached=row["electric_relative_l2_error"] <= args.field_target))
     if args.check:
-        check(rows)
+        check(rows, args.field_target or .05)
+        if args.field_target is not None:
+            check(uniform, args.field_target)
     print(f'Report: {args.output.resolve()}')
 
 

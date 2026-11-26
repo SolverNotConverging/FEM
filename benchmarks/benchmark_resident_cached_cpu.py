@@ -33,10 +33,15 @@ def host_estimator(session):
     def traces(source):
         if source is None:
             return None
-        left, right, cells = source
+        left, right, cells, *order = source
         return ((basis(left[0]), cp.asnumpy(left[1])),
-                (basis(right[0]), cp.asnumpy(right[1])), cp.asnumpy(cells))
-    return SimpleNamespace(volume=basis(session.volume), system=session.system,
+                (basis(right[0]), cp.asnumpy(right[1])), cp.asnumpy(cells),
+                *(cp.asnumpy(a) for a in order))
+    natural = session.natural
+    if natural is not None:
+        natural = (basis(natural[0]), cp.asnumpy(natural[1]), cp.asnumpy(natural[2]))
+    return SimpleNamespace(volume=basis(session.volume), system=session.system, natural=natural,
+                           derivatives=tuple(cp.asnumpy(a) for a in session.derivatives),
                            h=cp.asnumpy(session.h), interior=traces(session.interior),
                            seam=traces(session.seam))
 
@@ -64,7 +69,7 @@ def main():
             combined = np.zeros(elements)
             maximum = 0.
             for mode in result:
-                indicator, residual = ResidentSystem3D.estimate(
+                indicator, residual, _ = ResidentSystem3D.estimate(
                     prepared, mode.coefficients, mode.neff, array_module=np)
                 combined = np.maximum(combined, indicator/max(indicator.sum(), np.finfo(float).tiny)*residual**2)
                 maximum = max(maximum, residual)

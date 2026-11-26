@@ -252,9 +252,9 @@ Returns: the physical mesh.
 
 .. code-block:: python
 
-    ScatteringSolver2D.solve(*, backend='auto', max_refinements=2, adaptive_tolerance=0.05)
+    ScatteringSolver2D.solve(*, backend='auto', max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None)
 
-Adapt the physical mesh until the relative interface residual meets tolerance or the budget is spent.
+Adapt the physical mesh using the relative volume, interface and boundary residual.
 
 .. list-table:: Arguments
    :header-rows: 1
@@ -280,6 +280,16 @@ Adapt the physical mesh until the relative interface residual meets tolerance or
      - Optional
      - ``0.05``
      - Relative discretization-residual stopping threshold.
+   * - ``max_elements``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Adaptive mesh element budget.
+   * - ``max_dofs``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Maximum field-space size on an adaptive candidate mesh before eliminating boundary DOFs.
 
 Returns: a ScatteringResult.
 
@@ -553,9 +563,9 @@ Returns: the physical mesh.
 
 .. code-block:: python
 
-    ScatteringSolver3D.solve(*, backend='auto', max_refinements=2, adaptive_tolerance=0.05)
+    ScatteringSolver3D.solve(*, backend='auto', max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None)
 
-Adapt the physical mesh until the relative interface residual meets tolerance or the budget is spent.
+Adapt the physical mesh using the relative volume, interface and boundary residual.
 
 .. list-table:: Arguments
    :header-rows: 1
@@ -581,6 +591,16 @@ Adapt the physical mesh until the relative interface residual meets tolerance or
      - Optional
      - ``0.05``
      - Relative discretization-residual stopping threshold.
+   * - ``max_elements``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Adaptive mesh element budget.
+   * - ``max_dofs``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Maximum field-space size on an adaptive candidate mesh before eliminating boundary DOFs.
 
 Returns: a ScatteringResult.
 
@@ -656,14 +676,14 @@ Plot a field such as 'Total Et' (TE) or 'Incident Ez' (TM), or 'RCS'.
      - ``str | None``
      - Optional
      - ``None``
-     - Incident, total or scattered field. Choose Et/Hz for 2D TE, Ez/Ht for 2D TM, or E/H in 3D (e.g. 'Total H'). RCS in either dimension, or Surface current on a 3D conductor.
+     - Incident, total or scattered field. Choose Et/Hz for 2D TE, Ez/Ht for 2D TM, or E/H in 3D. Full 2D arrows include 'Total E vector' and 'Total H vector'. RCS in either dimension, or Surface current on a 3D conductor.
    * - ``quantity``
      - ``str``
      - Optional
      - ``'real'``
      - Real part, imaginary part, or magnitude.
 
-Returns: a Matplotlib figure in 2D or a PyVista plotter in 3D.
+Returns: a PyVista plotter for 3D or full vector views and a Matplotlib figure for planar fields and scattering width.
 
 ``ScatteringResult.show``
 ~~~~~~~~~~~~~~~~~~~~~~~~~

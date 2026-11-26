@@ -27,6 +27,8 @@ from typing import Literal, Sequence
 
 from fem.common.discretization import DEFAULT_QUADRATURE_ORDER
 import numpy as np
+from fem.common._cell_material import CellMaterial
+from fem.adaptivity._budget import check_candidate
 from numpy.typing import NDArray
 from scipy import linalg
 from scipy.sparse import coo_matrix, csc_matrix, csr_matrix
@@ -309,6 +311,7 @@ class ModeSolver1D(WaveguideScene1D, ModalSolverMixin):
             wavelength_elements=wavelength_count,
             material_aware=bool(material_aware),
         )
+        check_candidate(self, mesh.mesh, element_order)
         self.mesh_data = mesh
         self._quadrature_order = quadrature
         self._discretization_settings = {
@@ -379,7 +382,9 @@ class ModeSolver1D(WaveguideScene1D, ModalSolverMixin):
     def _transformed_material_at(
         self, x: FloatArray
     ) -> tuple[ComplexArray, ComplexArray]:
-        return self.geometry.transformed_material_at(x)
+        if self.mesh_data.element_tags is None:
+            return self.geometry.transformed_material_at(x)
+        return CellMaterial(self.geometry, self.mesh_data.element_tags).on_cells(x)
 
     def _boundary_masks(
         self, nodes: FloatArray
@@ -772,13 +777,13 @@ class ModeSolver1D(WaveguideScene1D, ModalSolverMixin):
                 result &= centres <= xmax - pml.thickness
         return result
 
-    def solve(self, *, neff_guess: complex | None=None, num_modes: int=4, eigensolver_tolerance: float=1e-10, residual_tolerance: float=1e-07, dense_limit: int=450, backend: str="auto", max_refinements: int=2, adaptive_tolerance: float=0.05):
+    def solve(self, *, neff_guess: complex | None=None, num_modes: int=4, eigensolver_tolerance: float=1e-10, residual_tolerance: float=1e-07, dense_limit: int=450, backend: str="auto", max_refinements: int=2, adaptive_tolerance: float=0.05, max_elements: int | None=None, max_dofs: int | None=None):
         """Solve and return modes with separate algebraic and adaptive controls."""
         from fem.common.linalg import resolve_eigen_backend
         backend = resolve_eigen_backend(backend)
         from .adaptive import solve_1d
         options = {'neff_guess': neff_guess, 'num_modes': num_modes, 'tol': eigensolver_tolerance, 'residual_tolerance': residual_tolerance, 'dense_limit': dense_limit, 'backend': backend}
-        return self._finish_result(solve_1d(self, (), options, max_refinements, adaptive_tolerance))
+        return self._finish_result(solve_1d(self, (), options, max_refinements, adaptive_tolerance, max_elements, max_dofs))
 
 
     def _solve_once(

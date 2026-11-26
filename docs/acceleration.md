@@ -42,7 +42,7 @@ pass the independent original-pencil checks.
 ## Resident 3D periodic solve
 
 For `PeriodicModeSolver3D`, both accelerated backends preserve GPU physical filters,
-fields, normalization and the jump estimator. Explicit `gpu` uses CUDA Ritz;
+fields, normalization and the Maxwell residual estimator. Explicit `gpu` uses CUDA Ritz;
 `hybrid` and `auto` use CPU Ritz extraction:
 
 ```python
@@ -53,7 +53,7 @@ modes = solver.solve(backend="gpu", num_modes=2,
 The explicit `gpu` path uses CUDA for the nonsymmetric Ritz eigenproblem (`cuSOLVER geev`),
 batched refined-vector SVDs, Arnoldi normalization/orthogonalization, polynomial
 and weak-Gauss checks, duplicate/direction/PML filtering, field reconstruction
-and normalization, and the interface-jump adaptive estimator. Large numerical
+and normalization, and the volume and trace residual estimator. Large numerical
 arrays remain on device throughout these operations. No norm scalar is
 downloaded inside each Arnoldi step; two status bytes are read per restart cycle.
 The final accepted modes/fields are downloaded to preserve the existing NumPy,

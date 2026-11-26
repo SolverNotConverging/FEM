@@ -9,6 +9,7 @@ from typing import Mapping
 from uuid import uuid4
 
 import numpy as np
+from fem.common._mesh_sizing import append_size_view, size_view
 from numpy.typing import NDArray
 from skfem import MeshTet
 
@@ -170,6 +171,7 @@ def _periodic_edge_pairs(
 def discretize_3d(
     geometry: GeometryModel3D,
     *,
+    adaptive_sizes=None,
     max_element_size: float | None = None,
     wavelength_elements: int = 8,
     material_aware: bool = True,
@@ -237,6 +239,7 @@ def discretize_3d(
         previous_model = "" if owned else str(gmsh.model.getCurrent())
         model_name = f"fem_periodic_3d_{uuid4().hex}"
         model_added = False
+        view = None
         try:
             gmsh.option.setNumber("General.Terminal", 0)
             gmsh.model.add(model_name)
@@ -448,7 +451,6 @@ def discretize_3d(
                         continue
                     ratio = _material_scale(region.material) / background_scale
                     target = maximum / max(1.0, ratio)
-                    target = max(target, maximum * 0.1)
                     if target >= maximum * (1.0 - 1e-12):
                         continue
                     field = gmsh.model.mesh.field.add("Constant")
@@ -501,6 +503,10 @@ def discretize_3d(
                 )
                 sizing_fields.append(threshold)
                 target_sizes.append(pec_target)
+            if adaptive_sizes is not None:
+                target_sizes.append(float(np.min(adaptive_sizes[1])))
+                view = size_view(gmsh, adaptive_sizes, (xmin, ymin, zmin), scale)
+                append_size_view(gmsh, view, sizing_fields)
             if len(sizing_fields) == 1:
                 gmsh.model.mesh.field.setAsBackgroundMesh(sizing_fields[0])
             elif sizing_fields:
@@ -603,6 +609,8 @@ def discretize_3d(
         except Exception as exc:
             raise MeshError(f"Gmsh failed to generate the periodic 3D mesh: {exc}") from exc
         finally:
+            if view is not None:
+                gmsh.view.remove(view)
             if owned:
                 gmsh.finalize()
             else:

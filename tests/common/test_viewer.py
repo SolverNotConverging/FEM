@@ -193,6 +193,22 @@ def test_transverse_magnitude_uses_one_global_phase_and_loaded_results(tmp_path)
     viewer._window.close()
 
 
+@pytest.mark.parametrize("symbol", ["E", "H"])
+def test_full_vector_plot_includes_longitudinal_field(tmp_path, symbol):
+    result = fem.load(_ring_modes().save(tmp_path / "full.h5"))
+    expected = np.linalg.norm([result[0].fields.component(symbol + axis)[0] for axis in "xyz"])
+    plotter = result.plot(component=f"{symbol} vector", quantity="magnitude")
+    try:
+        label = "|E| (V/m)" if symbol == "E" else "|H| (A/m)"
+        glyphs = next(actor.mapper.dataset for actor in plotter.actors.values()
+                      if hasattr(getattr(actor, "mapper", None), "dataset")
+                      and label in actor.mapper.dataset.point_data)
+        np.testing.assert_allclose(glyphs[label], expected)
+        assert np.ptp(glyphs.points[:, 2]) > .01
+    finally:
+        plotter.close()
+
+
 @pytest.mark.parametrize("component, expected", [("Et", (1., -2.)), ("Ht", (-3., 4.))])
 def test_periodic_2d_arrows_follow_xz_in_plot_and_viewer(component, expected):
     from matplotlib.quiver import Quiver

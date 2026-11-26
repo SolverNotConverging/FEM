@@ -21,6 +21,7 @@ from typing import TypeAlias
 
 from fem.common.discretization import DEFAULT_QUADRATURE_ORDER
 import numpy as np
+from fem.common._cell_material import CellMaterial
 from numpy.typing import ArrayLike, NDArray
 from scipy import linalg
 from scipy.sparse import bmat, csc_matrix, csr_matrix, eye
@@ -85,7 +86,8 @@ def evaluate_material(
 ) -> tuple[ComplexArray, ComplexArray]:
     """Evaluate and validate relative diagonal ``(epsilon, mu)`` fields."""
 
-    epsilon, mu = material_at(x, y)
+    evaluate = material_at.on_cells if isinstance(material_at, CellMaterial) else material_at
+    epsilon, mu = evaluate(x, y)
     eps = _as_diagonal_field(epsilon, x.shape, "epsilon")
     permeability = _as_diagonal_field(mu, x.shape, "mu")
     if np.any(np.abs(permeability) == 0.0):

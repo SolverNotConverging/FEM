@@ -32,6 +32,9 @@ mesh. ``result.plot(quantity="real")`` returns a Matplotlib figure showing all
 three fields and the polar scattering width. Use ``imag`` or ``magnitude`` for
 the other field views. For each of the incident, total and scattered fields,
 the viewer offers **Et** and **Hz** for TE, or **Ez** and **Ht** for TM.
+Choose ``Total E vector`` or ``Total H vector`` for rotatable 2D field plots.
+These show the transverse components in the mesh plane or the longitudinal
+component perpendicular to it, according to polarization.
 Et and Ht use arrows at triangle centres, coloured by the complex vector
 magnitude. Real and imaginary views show the corresponding signed direction.
 Ez and Hz use nodal heat maps. Select RCS for the polar scattering width.
@@ -126,8 +129,8 @@ quadrature. Set the orders with ``mesh(element_order=..., quadrature_order=...)`
 The tetrahedral geometry is affine at either field order. Refine the surface
 mesh to resolve the curvature of a smooth target.
 By default ``solve(max_refinements=2, adaptive_tolerance=0.05)`` checks
-physical-domain flux jumps after each solve and refines the cells with the
-largest contributions. A zero budget uses the current mesh. The final
+volume equations, interface flux jumps and natural boundary conditions after
+each solve. It refines the cells with the largest contributions. A zero budget uses the current mesh. The final
 residual and stopping reason are available in ``result.solve_info``.
 Automatic meshing targets six elements per local wavelength at order two and
 ten at order one. The dielectric sizing applies inside the target so that

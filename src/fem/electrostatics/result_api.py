@@ -98,7 +98,63 @@ def _draw(ax, result, component, quantity, *, colorbar_axes=None):
     ax.set_title(component)
 
 
+def draw_3d(plotter, result, component, quantity, *, mesh_overlay=False, material=False):
+    """Display field arrows at tetrahedron centres or scalars on three midplanes."""
+    from fem.common.viewer import _tetra_grid, add_3d_overlays, add_arrows
+
+    if quantity not in ("real", "magnitude", "abs"):
+        raise ConfigurationError("Static fields support real or magnitude.")
+    mesh = result.mesh_data
+    if component == "mesh":
+        return add_3d_overlays(plotter, mesh, mesh_overlay=True, material=material)
+    grid = _tetra_grid(mesh)
+    if component == "potential":
+        values, label = result.potential, "Potential (V)"
+        coefficients = result.potential_coefficients
+        if coefficients is not None:
+            from skfem import Basis, ElementTetP2, MeshTet
+            import pyvista as pv
+            native = MeshTet(mesh.coordinates.T, mesh.elements.T)
+            basis = Basis(native, ElementTetP2())
+            # Both element conventions order the six edge DOFs as 01, 12, 20, 03, 13, 23.
+            cells = np.column_stack((np.full(native.nelements, 10), basis.element_dofs.T))
+            grid = pv.UnstructuredGrid(cells.ravel(), np.full(native.nelements, pv.CellType.QUADRATIC_TETRA),
+                                       basis.doflocs.T)
+            values = coefficients
+        grid.point_data[label] = np.abs(values) if quantity != "real" else values
+    elif component in ("E", "D", "Ex", "Ey", "Ez", "Dx", "Dy", "Dz", "|E|", "|D|"):
+        symbol = component.strip("|")[0]
+        field, unit = ((result.element_electric_field, "V/m") if symbol == "E"
+                       else (result.element_displacement_field, "C/m^2"))
+        if field is None:
+            raise ConfigurationError(f"This result has no cell {symbol} field.")
+        label = f"{component} ({unit})"
+        if component == symbol:
+            centers = mesh.coordinates[mesh.elements].mean(axis=1)
+            add_arrows(plotter, centers, field.T, quantity, label=f"|{symbol}| ({unit})")
+        else:
+            values = (np.linalg.norm(field, axis=1) if component.startswith("|")
+                      else field[:, "xyz".index(component[-1])])
+            grid.cell_data[label] = np.abs(values) if quantity != "real" else values
+    else:
+        raise ConfigurationError(f"Unknown 3D electrostatic field {component!r}.")
+    if component not in ("E", "D"):
+        slices = grid.slice_orthogonal()
+        plotter.add_mesh(slices.combine(), scalars=label, cmap="viridis")
+    plotter.add_mesh(grid.outline(), color="grey")
+    return add_3d_overlays(plotter, mesh, mesh_overlay=mesh_overlay, material=material)
+
+
 def plot_result(result, *, component=None, quantity="real"):
+    if result.coordinates.shape[1] == 3:
+        import pyvista as pv
+        plotter = pv.Plotter()
+        try:
+            draw_3d(plotter, result, component or "potential", quantity)
+        except Exception:
+            plotter.close()
+            raise
+        return plotter
     from matplotlib.figure import Figure
     figure = Figure()
     ax = figure.subplots()
@@ -108,6 +164,9 @@ def plot_result(result, *, component=None, quantity="real"):
 
 
 def show_result(result, *, block=True):
+    if result.coordinates.shape[1] == 3:
+        from fem.common.viewer import show
+        return show(result, block=block)
     import matplotlib.pyplot as plt
     from matplotlib.widgets import RadioButtons
     figure = plt.figure(figsize=(9, 6))

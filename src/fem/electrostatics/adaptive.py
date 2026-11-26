@@ -1,6 +1,8 @@
 """Flux-jump indicators and conforming local refinement for electrostatics."""
 
 from dataclasses import replace
+from itertools import combinations
+from math import factorial
 
 import numpy as np
 
@@ -8,7 +10,7 @@ from .meshing import FEMMesh, _mesh_extrema
 
 
 def flux_indicators(mesh: FEMMesh, displacement: np.ndarray, charge: np.ndarray,
-                    fixed: np.ndarray, corner_displacement=None) -> tuple[np.ndarray, float]:
+                    prescribed_facets: np.ndarray, corner_displacement=None) -> tuple[np.ndarray, float]:
     """Estimate discretization error from div(D)=rho and normal-flux jumps.
 
     The relative indicator is normalized by the elementwise L2 norm of D.
@@ -21,10 +23,10 @@ def flux_indicators(mesh: FEMMesh, displacement: np.ndarray, charge: np.ndarray,
         measures = np.abs(points[:, 1, 0] - points[:, 0, 0])
         h = measures
     else:
-        measures = 0.5 * np.abs(np.linalg.det(points[:, 1:] - points[:, :1]))
+        measures = np.abs(np.linalg.det(points[:, 1:] - points[:, :1])) / factorial(native.dim())
         h = np.maximum.reduce([
             np.linalg.norm(points[:, i] - points[:, j], axis=1)
-            for i, j in ((0, 1), (1, 2), (2, 0))
+            for i, j in combinations(range(native.dim() + 1), 2)
         ])
     if corner_displacement is not None:
         gradients = np.linalg.solve(points[:, 1:] - points[:, :1],
@@ -34,8 +36,7 @@ def flux_indicators(mesh: FEMMesh, displacement: np.ndarray, charge: np.ndarray,
     adjacent = native.f2t
     first, second = adjacent
     facets = native.facets.T
-    # A face is a Dirichlet face only if all its nodal trace DOFs are fixed.
-    active = ~np.all(fixed[facets], axis=1)
+    active = ~prescribed_facets
     interior = (second >= 0) & active
     boundary = (second < 0) & active
     if mesh.nodes.shape[1] == 1:
@@ -43,11 +44,19 @@ def flux_indicators(mesh: FEMMesh, displacement: np.ndarray, charge: np.ndarray,
         face_measure = np.ones(len(facets))
         face_h = h[first].copy()
         face_h[interior] = 0.5 * (h[first[interior]] + h[second[interior]])
-    else:
+    elif native.dim() == 2:
         edges = mesh.nodes[facets[:, 1]] - mesh.nodes[facets[:, 0]]
         face_measure = np.linalg.norm(edges, axis=1)
         face_h = face_measure
         normals = np.column_stack((-edges[:, 1], edges[:, 0])) / face_measure[:, None]
+    else:
+        a, b, c = np.moveaxis(mesh.nodes[facets], 1, 0)
+        cross = np.cross(b - a, c - a)
+        area2 = np.linalg.norm(cross, axis=1)
+        normals = cross / area2[:, None]
+        face_measure = area2 / 2
+        face_h = np.maximum.reduce([np.linalg.norm(v, axis=1) for v in (b-a, c-b, a-c)])
+
     def normal_flux(cells, selected):
         if corner_displacement is None:
             return np.sum(displacement[cells] * normals[selected], axis=-1)[:, None]
@@ -58,8 +67,9 @@ def flux_indicators(mesh: FEMMesh, displacement: np.ndarray, charge: np.ndarray,
     left_flux = normal_flux(first, np.arange(len(first)))
     jumps = left_flux.copy()
     jumps[interior] -= normal_flux(second[interior], np.flatnonzero(interior))
-    # Exact mean square of the linear normal trace on a segment (or a point in 1D).
-    squared_jump = (jumps[:, 0]**2 + jumps[:, 0]*jumps[:, -1] + jumps[:, -1]**2) / 3
+    # Integrate the squared linear trace exactly on each simplex facet.
+    n = jumps.shape[1]
+    squared_jump = (np.sum(jumps**2, axis=1) + jumps.sum(axis=1)**2) / (n * (n + 1))
     contribution = face_h * face_measure * squared_jump
     np.add.at(squared, first[interior], 0.5 * contribution[interior])
     np.add.at(squared, second[interior], 0.5 * contribution[interior])
@@ -86,6 +96,9 @@ def refine_marked(mesh: FEMMesh, marked: np.ndarray) -> FEMMesh:
     return replace(
         mesh, mesh=native, nodes=nodes, elements=elements,
         element_tags=mesh.element_tags[parents],
+        charge_density=(None if mesh.charge_density is None else mesh.charge_density[parents]),
+        potential_cells=({owner: cells[parents] for owner, cells in mesh.potential_cells.items()}
+                         if mesh.potential_cells is not None else None),
         info=replace(mesh.info, nodes=len(nodes), elements=len(elements),
                      minimum_edge=minimum, maximum_edge=maximum),
     )

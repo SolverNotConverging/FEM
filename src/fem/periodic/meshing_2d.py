@@ -6,9 +6,11 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 import numpy as np
+from fem.common._mesh_sizing import append_size_view, curve_size_fields, size_view
 from numpy.typing import NDArray
 from skfem import MeshTri
 
+from fem.common.validation import positive_integer
 from .exceptions import ConfigurationError, MeshError
 from .geometry import Circle, GeometryModel2D, Polygon, Rectangle
 
@@ -56,7 +58,7 @@ def _material_scale(material: object) -> float:
 
     epsilon = np.asarray(getattr(material, "eps_r"), dtype=np.complex128)
     mu = np.asarray(getattr(material, "mu_r"), dtype=np.complex128)
-    return float(np.sqrt(np.max(np.abs(epsilon * mu))))
+    return float(np.sqrt(np.max(np.abs(epsilon)) * np.max(np.abs(mu))))
 
 
 def _add_occ_shape(gmsh: object, shape: object, origin: tuple[float, float], scale: float) -> tuple[int, int]:
@@ -205,8 +207,11 @@ def _facet_groups(
 def discretize_periodic_2d(
     geometry: GeometryModel2D,
     *,
+    geometry_tolerance: float | None = None,
+    adaptive_sizes=None,
     max_element_size: float,
     element_order: int = 1,
+    pml_layers: int = 3,
 ) -> FEMPeriodicMesh2D:
     """Create a first-order triangular mesh with a Gmsh periodic node map."""
 
@@ -222,6 +227,7 @@ def discretize_periodic_2d(
     except Exception as exc:  # pragma: no cover - environment dependent
         raise MeshError("Gmsh is required to discretize periodic geometry.") from exc
 
+    pml_layers = positive_integer(pml_layers, "pml_layers")
     xmin, xmax = geometry.x_span
     zmin, zmax = geometry.z_span
     width = xmax - xmin
@@ -231,11 +237,16 @@ def discretize_periodic_2d(
     model_name = f"fem_periodic_2d_{uuid4().hex}"
     previous_model = ""
     model_added = False
+    previous_options = {}
+    view = None
     try:
         if owned:
             gmsh.initialize()
             gmsh.option.setNumber("General.Terminal", 0)
         else:
+            options = ("Mesh.ElementOrder", "Mesh.MeshSizeMax", "Mesh.MeshSizeMin",
+                       "Mesh.MeshSizeFromCurvature", "Mesh.MeshSizeExtendFromBoundary", "Mesh.MeshSizeFromPoints")
+            previous_options = {key: gmsh.option.getNumber(key) for key in options}
             try:
                 previous_model = str(gmsh.model.getCurrent())
             except Exception:
@@ -243,9 +254,20 @@ def discretize_periodic_2d(
         gmsh.model.add(model_name)
         model_added = True
         occ = gmsh.model.occ
-        base = (2, int(occ.addRectangle(0.0, 0.0, 0.0, width * scale, period * scale)))
+        # CAD strips bound the normal cell extent independently of tangential size.
+        cuts = {xmin, xmax}
+        layers = []
+        for pml in geometry.pmls:
+            for side in pml.sides("x"):
+                wall, sign = (xmin, 1) if side == "x-" else (xmax, -1)
+                edges = wall + sign * np.linspace(0, pml.thickness, pml_layers + 1)
+                cuts.update(edges)
+                layers.extend(zip(edges[:-1], edges[1:], strict=True))
+        cuts = sorted(cuts)
+        bases = [(2, occ.addRectangle((a - xmin) * scale, 0., 0., (b - a) * scale, period * scale))
+                 for a, b in zip(cuts[:-1], cuts[1:], strict=True)]
         objects = [*geometry.regions, *geometry.boundaries, *geometry.refinements]
-        inputs = [base] + [
+        inputs = bases + [
             _add_occ_shape(gmsh, item.shape, (xmin, zmin), scale)
             for item in objects
         ]
@@ -257,12 +279,12 @@ def discretize_periodic_2d(
                 raise MeshError("Gmsh returned incomplete fragment provenance.")
             all_surfaces = [int(tag) for dimension, tag in fragments if dimension == 2]
         else:
-            all_surfaces = [base[1]]
-            provenance = [[base]]
+            all_surfaces = [bases[0][1]]
+            provenance = [bases]
         occ.synchronize()
 
         descendants: dict[int, set[int]] = {}
-        for item_index, item in enumerate(objects, start=1):
+        for item_index, item in enumerate(objects, start=len(bases)):
             descendants[item.id] = {
                 int(tag) for dimension, tag in provenance[item_index] if dimension == 2
             }
@@ -331,7 +353,6 @@ def discretize_periodic_2d(
                 continue
             ratio = _material_scale(region.material) / background_scale
             target = maximum / max(1.0, ratio)
-            target = max(target, maximum * 0.1)
             if target >= maximum * (1.0 - 1e-12):
                 continue
             field = gmsh.model.mesh.field.add("Constant")
@@ -373,6 +394,11 @@ def discretize_periodic_2d(
             gmsh.model.mesh.field.setNumber(threshold, "DistMax", 2.0 * maximum * scale)
             fields.append(threshold)
             target_sizes.append(pec_target)
+        fields.extend(curve_size_fields(gmsh, geometry_tolerance, scale, maximum))
+        if adaptive_sizes is not None:
+            target_sizes.append(float(np.min(adaptive_sizes[1])))
+            view = size_view(gmsh, adaptive_sizes, (xmin, zmin), scale)
+            append_size_view(gmsh, view, fields)
         if len(fields) == 1:
             gmsh.model.mesh.field.setAsBackgroundMesh(fields[0])
         elif fields:
@@ -382,11 +408,11 @@ def discretize_periodic_2d(
         gmsh.option.setNumber("Mesh.ElementOrder", 1)
         gmsh.option.setNumber("Mesh.MeshSizeMax", maximum * scale)
         gmsh.option.setNumber(
-            "Mesh.MeshSizeMin", max(min(target_sizes) * scale * 0.05, 1e-12)
+            "Mesh.MeshSizeMin", 1e-12 if geometry_tolerance is not None else max(min(target_sizes) * scale * 0.05, 1e-12)
         )
         gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
         gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
-        gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+        gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 24)
         gmsh.model.mesh.generate(2)
 
         node_tags, coordinates, _ = gmsh.model.mesh.getNodes()
@@ -438,6 +464,10 @@ def discretize_periodic_2d(
             [periodic_node_map[int(slave)] for slave in slave_nodes], dtype=np.int64
         )
 
+        centers_x = points[triangles, 0].mean(axis=1)
+        for a, b in layers:
+            if not np.any((min(a, b) < centers_x) & (centers_x < max(a, b))):
+                raise MeshError("A requested PML layer has no active triangles.")
         mesh = MeshTri(points.T, triangles.T)
         groups = _facet_groups(mesh, lookup, gmsh, curve_groups)
     except (MeshError, ConfigurationError):
@@ -445,12 +475,16 @@ def discretize_periodic_2d(
     except Exception as exc:
         raise MeshError(f"Gmsh failed to generate the 2D periodic mesh: {exc}") from exc
     finally:
+        if view is not None:
+            gmsh.view.remove(view)
         if owned:
             gmsh.finalize()
         elif model_added:
             try:
                 gmsh.model.setCurrent(model_name)
                 gmsh.model.remove()
+                for key, value in previous_options.items():
+                    gmsh.option.setNumber(key, value)
                 if previous_model:
                     gmsh.model.setCurrent(previous_model)
             except Exception:
@@ -462,6 +496,9 @@ def discretize_periodic_2d(
     expected = np.asarray((0.0, period))
     if np.max(np.linalg.norm(differences - expected, axis=1)) > tolerance_physical:
         raise MeshError("Periodic node pairs are not related by the cell translation.")
+    for nodes, key in ((slave_nodes, "periodic_slave"), (master_nodes, "periodic_master")):
+        if not np.array_equal(np.unique(nodes), np.unique(mesh.facets[:, groups[key]])):
+            raise MeshError("Incomplete periodic boundary node correspondence.")
     # The two *topologies* must match, but the one-sided material traces may
     # differ: placing a dielectric interface at the cell seam is a valid
     # periodic laminate.  Objects that genuinely cross the seam still need to
