@@ -77,6 +77,5 @@ integer connectivity before conversion and owns read-only coordinate arrays.
 Modal ``solve_info`` exposes an explicit set of execution and convergence keys,
 including backend/method details when recorded, requested target/direction,
 residual tolerances, and adaptive history/status. Metadata remains available for
-mesh and physics-specific data. Electrostatics and scattering retain their
-specialized diagnostic reports. New modal diagnostic fields must be added to
+mesh and physics-specific data. Plane-wave scattering records its direct solve method and backend. New modal diagnostic fields must be added to
 the result contract explicitly.

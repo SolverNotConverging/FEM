@@ -20,6 +20,7 @@ substantially longer. 3D cases also require more memory.
 3. `1d_dielectric_slab.py <1d_dielectric_slab.py>`_ — Guided modes in a dielectric slab. Single solve.
 4. `2d_ridge_waveguide.py <2d_ridge_waveguide.py>`_ — A ridge waveguide cross section. Single solve.
 5. `2d_microstrip_surface_impedance.py <2d_microstrip_surface_impedance.py>`_ — A copper microstrip with a surface-impedance boundary. Single solve.
+6. `2d_circular_optical_fibre.py <2d_circular_optical_fibre.py>`_ — A circular step-index glass fibre at a vacuum wavelength of 1.55 µm. The two polarizations of its fundamental mode have nearly equal effective indices between the cladding and core indices. Select ``Et`` in the viewer to compare their transverse electric fields.
 
 Run a script from this directory, or pass its path from the repository root.
 Scripts that save results use
@@ -45,7 +46,7 @@ From the repository folder::
     python examples/waveguide/2d_cylindrical_waveguide.py
 
 Change ``num_modes`` to request more or fewer modes. Both examples use
-second-order elements and one fixed mesh. The detected C8v subgroup in the
+second-order elements and adaptive refinement. The detected C8v subgroup in the
 circular example is a finite subgroup of the circle's continuous symmetry.
 The `tracking API reference <../../docs/api/waveguide.rst>`_ documents every
 ``track_options`` key and its default. Set ``track_modes=False`` to disable

@@ -56,7 +56,13 @@ def test_example_runs(path, monkeypatch):
     monkeypatch.setattr(SolverMixin, "show", lambda self, **kwargs: None)
     monkeypatch.setattr("matplotlib.pyplot.show", lambda *args, **kwargs: None)
     monkeypatch.setattr(sys, "argv", [str(path)])
-    runpy.run_path(str(path), run_name="__main__")
+    namespace = runpy.run_path(str(path), run_name="__main__")
+    if path.parent.name == "antenna":
+        sweep = namespace["sweep"]
+        assert isinstance(sweep, fem.AntennaSweep) and len(sweep) > 1
+        assert all(case.mesh_data is sweep.mesh_data for case in sweep)
+        assert all(case.solve_info["mesh_adaptation_frequency"] == sweep.frequencies[-1]
+                   for case in sweep)
 
 
 @pytest.mark.skipif(

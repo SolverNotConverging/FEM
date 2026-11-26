@@ -30,6 +30,7 @@ class MeshInfo:
     interface_refinement: float | None
     boundary_refinement: float | None
     material_element_sizes: dict[str, float]
+    element_order: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -558,7 +559,7 @@ def discretize_2d(
     return FEMMesh(
         mesh=mesh,
         nodes=points,
-        elements=triangles,
+        elements=mesh.t.T,
         element_tags=tags,
         physical_names=names,
         info=MeshInfo(

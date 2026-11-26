@@ -8,11 +8,13 @@ from fem.common.validation import finite_complex as _finite_complex
 from fem.common import materials
 from .scene import PeriodicScene2D
 
-from fem.common.contracts import ElectromagneticSolverMixin
+from fem.common.modal_sweep import ModalSolverMixin
 
 from collections.abc import Sequence
 from typing import Any, Literal, TypeAlias
 
+from fem.common.discretization import DEFAULT_QUADRATURE_ORDER, field_orders
+from skfem import Basis
 import numpy as np
 from numpy.typing import NDArray
 
@@ -50,8 +52,10 @@ FloatArray: TypeAlias = NDArray[np.float64]
 Direction = Literal["forward", "backward", "all"]
 
 
-class PeriodicModeSolver2D(PeriodicScene2D, ElectromagneticSolverMixin):
+class PeriodicModeSolver2D(PeriodicScene2D, ModalSolverMixin):
     """Solve complex Floquet propagation constants in one ``x-z`` unit cell."""
+
+    _pml_axes = "x"
 
     def __init__(self, *, frequency: float, x_range: float | Sequence[float], z_range: float | Sequence[float], polarization: str='both', background_material: materials.Material=materials.vacuum, boundary: materials.IdealBoundary=materials.PEC) -> None:
         self._init_scene(background_material=background_material)
@@ -174,18 +178,6 @@ class PeriodicModeSolver2D(PeriodicScene2D, ElectromagneticSolverMixin):
             raise ConfigurationError("Provide both x_range and z_range for an internal PMC.")
         return self._add_wall("pmc", x_range, z_range, name=name, components=components)
 
-    def add_pml(self, *, thickness: float, order: int=3, sigma_max: float=5.0, direction: str='x') -> PMLSpec:
-        normalized = str(direction).strip().lower()
-        if normalized == "both":
-            normalized = "x"
-        return self.geometry.add_pml(
-            PMLSpec(
-                _positive_real(thickness, "thickness"),
-                _positive_integer(order, "order"),
-                float(sigma_max),
-                normalized,
-            )
-        )
 
 
     def _set_outer_boundary_impl(self, *, kind: str) -> None:
@@ -238,14 +230,11 @@ class PeriodicModeSolver2D(PeriodicScene2D, ElectromagneticSolverMixin):
         max_element_size: float | None = None,
         resolution: tuple[int, int] | None = None,
         wavelength_elements: int = 4,
-        element_order: int = 1,
-        quadrature_order: int = 4,
+        element_order: int = 2,
+        quadrature_order: int = DEFAULT_QUADRATURE_ORDER,
     ) -> FEMPeriodicMesh2D:
         wavelength_count = _positive_integer(wavelength_elements, "wavelength_elements", 4)
-        order = _positive_integer(element_order, "element_order")
-        quadrature = _positive_integer(quadrature_order, "quadrature_order", 2)
-        if order != 1:
-            raise BackendCapabilityError("v1 supports first-order triangular elements only.")
+        order, quadrature = field_orders(element_order, quadrature_order, (1, 2))
         if max_element_size is not None and resolution is not None:
             raise ConfigurationError("Supply only one of max_element_size or resolution.")
         if resolution is not None:
@@ -265,18 +254,7 @@ class PeriodicModeSolver2D(PeriodicScene2D, ElectromagneticSolverMixin):
             max_element_size=maximum,
             element_order=order,
         )
-        polarizations = ("TE", "TM") if self.polarization == "both" else (self.polarization.upper(),)
-        systems = {
-            selected: assemble_periodic_system_2d(
-                mesh_data,
-                polarization=selected,  # type: ignore[arg-type]
-                frequency=self.frequency,
-                k0=self.k0,
-                material_at=self.geometry.transformed_material_at,
-                quadrature_order=quadrature,
-            )
-            for selected in polarizations
-        }
+        systems = self._assemble_mesh(mesh_data, quadrature)
         # Commit only after meshing and every polarization assembly succeed.
         # A failed refinement should leave the previous solved model usable.
         self._invalidate_solution()
@@ -289,6 +267,23 @@ class PeriodicModeSolver2D(PeriodicScene2D, ElectromagneticSolverMixin):
             "quadrature_order": quadrature,
         }
         return mesh_data
+
+    def _reassemble_frequency(self):
+        self._systems = self._assemble_mesh(self.mesh_data, self._discretization_settings["quadrature_order"])
+
+    def _assemble_mesh(self, mesh_data, quadrature):
+        polarizations = ("TE", "TM") if self.polarization == "both" else (self.polarization.upper(),)
+        return {
+            selected: assemble_periodic_system_2d(
+                mesh_data,
+                polarization=selected,  # type: ignore[arg-type]
+                frequency=self.frequency,
+                k0=self.k0,
+                material_at=self.geometry.transformed_material_at,
+                quadrature_order=quadrature,
+            )
+            for selected in polarizations
+        }
 
     def refine(self, factor: float = 2.0) -> FEMPeriodicMesh2D:
         if self._discretization_settings is None:
@@ -387,15 +382,11 @@ class PeriodicModeSolver2D(PeriodicScene2D, ElectromagneticSolverMixin):
         """Reconstruct one complex E/H sample at every triangle barycentre."""
 
         cells = np.asarray(system.mesh_data.mesh.t.T, dtype=np.int64)
-        computational_points = np.asarray(system.basis.mesh.p.T, dtype=np.float64)
-        cell_points = computational_points[cells]
-        differences = cell_points[:, 1:, :] - cell_points[:, :1, :]
-        nodal_values = np.asarray(full[cells], dtype=np.complex128)
-        gradient = np.linalg.solve(
-            differences,
-            (nodal_values[:, 1:] - nodal_values[:, :1])[..., np.newaxis],
-        )[..., 0]
-        primary = np.mean(nodal_values, axis=1)
+        center = Basis(system.basis.mesh, system.basis.elem, dofs=system.basis.dofs,
+                       quadrature=(np.full((2, 1), 1/3), np.array([.5])))
+        sample = center.interpolate(full)
+        primary = np.asarray(sample)[:, 0]
+        gradient = sample.grad[:, :, 0].T
         coordinates = np.asarray(system.mesh_data.nodes[cells].mean(axis=1), dtype=np.float64)
         transformed_epsilon, transformed_mu = evaluate_material(
             self.geometry.transformed_material_at,
@@ -490,6 +481,7 @@ class PeriodicModeSolver2D(PeriodicScene2D, ElectromagneticSolverMixin):
                 "cell_epsilon_r": cell_epsilon,
                 "cell_mu_r": cell_mu,
                 "cell_pml_fraction": cell_pml_fraction,
+                "element_order": self.mesh_data.info.element_order,
                 "mesh_element_tags": self.mesh_data.element_tags,
                 "periodic_node_pairs": np.column_stack(
                     (self.mesh_data.slave_nodes, self.mesh_data.master_nodes)
@@ -659,6 +651,7 @@ class PeriodicModeSolver2D(PeriodicScene2D, ElectromagneticSolverMixin):
                 "eigensolver": method,
                 "backend": backend,
                 "geometry_revision": self.geometry.revision,
+                "element_order": self.mesh_data.info.element_order,
                 "mesh_element_tags": self.mesh_data.element_tags,
                 "periodic_node_pairs": np.column_stack(
                     (self.mesh_data.slave_nodes, self.mesh_data.master_nodes)
@@ -684,7 +677,7 @@ class PeriodicModeSolver2D(PeriodicScene2D, ElectromagneticSolverMixin):
             setattr(self, component, np.stack([mode.component(component) for mode in result]))
         return result
 
-    def mesh(self, *, max_element_size: float | None=None, resolution: tuple[int, int] | None=None, wavelength_elements: int=4, element_order: int=1, quadrature_order: int=4):
+    def mesh(self, *, max_element_size: float | None=None, resolution: tuple[int, int] | None=None, wavelength_elements: int=4, element_order: int=2, quadrature_order: int=DEFAULT_QUADRATURE_ORDER):
         """Build the initial mesh; solve() may subsequently refine it."""
         settings = {'max_element_size': max_element_size, 'resolution': resolution, 'wavelength_elements': wavelength_elements, 'element_order': element_order, 'quadrature_order': quadrature_order}
         mesh = self._mesh_impl(**settings)

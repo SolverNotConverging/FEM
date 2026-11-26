@@ -18,10 +18,9 @@ solver = fem.PeriodicModeSolver2D(frequency=20e9, x_range=(0.0, 10.0 * MM), z_ra
 solver.add_rectangle(x_range=(0.0, 1.27 * MM), z_range=(0.0, 8.0 * MM), name='grounded_dielectric_slab', material=substrate)
 solver.add_geometry(name='top_pec_perturbation', shape=fem.shapes.Rectangle(bounds=((1.27 * MM, 1.32 * MM), (1.0 * MM, 2.0 * MM))), material=fem.materials.PEC)
 solver.add_pml(thickness=2.5 * MM, direction='x+')
-solver.mesh(max_element_size=0.35 * MM)
 
 modes = solver.solve(backend="auto",
-    max_refinements=0,
+    max_refinements=2,
     direction='all',
     eigensolver='auto',
     max_pml_fraction=None,

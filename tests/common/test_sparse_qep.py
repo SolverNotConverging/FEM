@@ -3,16 +3,13 @@
 from types import SimpleNamespace
 
 import numpy as np
-import pytest
 from scipy import linalg
 from scipy.sparse import bmat, csr_matrix, eye
 
 import fem.waveguide.assembly as standalone
-import fem.scattering.modes as wave_modes
 
 
-@pytest.mark.parametrize("backend", [standalone, wave_modes])
-def test_sparse_qep_elimination_handles_complex_and_singular_mass(backend, monkeypatch):
+def test_sparse_qep_elimination_handles_complex_and_singular_mass(monkeypatch):
     rng = np.random.default_rng(41)
     n = 6
     a0 = csr_matrix(rng.normal(size=(n, n)) + 1j * rng.normal(size=(n, n)))
@@ -30,10 +27,8 @@ def test_sparse_qep_elimination_handles_complex_and_singular_mass(backend, monke
     right = bmat(((identity, zero), (zero, a2))).toarray()
     target = 0.7 - 0.2j
     factor_shapes = []
-    import fem.common.linalg as shared
-    implementation = standalone if backend is standalone else shared
-    original_splu = implementation.splu
-    original_eigs = implementation.eigs
+    original_splu = standalone.splu
+    original_eigs = standalone.eigs
 
     def factor(matrix):
         factor_shapes.append(matrix.shape)
@@ -49,18 +44,12 @@ def test_sparse_qep_elimination_handles_complex_and_singular_mass(backend, monke
         np.testing.assert_allclose(actual, expected, rtol=1e-11, atol=1e-11)
         return original_eigs(operator, **kwargs)
 
-    monkeypatch.setattr(implementation, "splu", factor)
-    monkeypatch.setattr(implementation, "eigs", iterate)
-    if backend is standalone:
-        values, vectors, method = standalone.solve_qep_candidates(
-            system, target=target, candidate_count=3,
-            tolerance=1e-11, dense_linearization_limit=4, backend="cpu",
-        )
-    else:
-        solver = SimpleNamespace(dense_linearization_limit=4)
-        values, vectors, method = wave_modes.ModeSolver._linearized_candidates(
-            solver, system, target, 6, 1e-11, backend="cpu",
-        )
+    monkeypatch.setattr(standalone, "splu", factor)
+    monkeypatch.setattr(standalone, "eigs", iterate)
+    values, vectors, method = standalone.solve_qep_candidates(
+        system, target=target, candidate_count=3,
+        tolerance=1e-11, dense_linearization_limit=4, backend="cpu",
+    )
     assert factor_shapes == [(n, n)]
     assert method == "sparse-shift-invert"
     reference = linalg.eigvals(left, right)

@@ -2,10 +2,9 @@
 
 One window shows any result: choose the case, mode, field component and
 quantity, and toggle the mesh and the material regions. Et/Ht draw transverse
-arrows. 1D/2D fields use Matplotlib; 3D periodic cells use PyVista, with arrows for the E and H
-vector fields. Frequency sweeps add S-parameter spectra and scattering results
-with an NF2FF contour add far-field patterns. The window only reads public
-result data, so it also works for results loaded from HDF5.
+arrows. One- and two-dimensional fields use Matplotlib. Three-dimensional
+fields use PyVista vector glyphs, and scattering RCS uses a radial surface.
+The same controls operate on results loaded from HDF5.
 """
 from __future__ import annotations
 
@@ -19,12 +18,6 @@ from ._vector_plot import aligned_components, draw_mode_vectors
 _WAVE_COMPONENTS = ("Ex", "Ey", "Ez", "Hx", "Hy", "Hz", "E", "H")
 _QUANTITIES = ("real", "imag", "magnitude", "phase")
 _STATIC_QUANTITIES = ("real", "magnitude")
-_SPECTRUM_QUANTITIES = ("db", "magnitude", "phase", "real", "imag")
-_SPECTRUM = "S-parameters"
-_FARFIELD = ("Far field (polar)", "Far field (rectangular)")
-_FARFIELD_QUANTITIES = {"directivity (dB)": ("directivity", True), "gain (dB)": ("gain", True),
-                        "realized gain (dB)": ("realized_gain", True),
-                        "power density (W/m/rad)": ("power_density", False)}
 _MAX_ARROWS = 2500
 _TRANSVERSE_COMPONENTS = ('Et', 'Ht')
 
@@ -83,10 +76,7 @@ class _Source:
     def __init__(self, result: Any):
         self.result = result
         name = type(result).__name__
-        self.spectrum = name == "ScatteringSweepResult"
-        if self.spectrum:
-            self.cases = list(result.results)
-        elif name == "PeriodicSweepResult":
+        if name in ("PeriodicSweepResult", "AntennaSweep"):
             self.cases = list(result)
         else:
             self.cases = [result]
@@ -94,19 +84,30 @@ class _Source:
         self.has_modes = hasattr(first, "mode") and hasattr(first, "__len__")
         self.family = type(first).__module__.rsplit(".", 1)[0]
         self.static = self.family == "fem.electrostatics"
-        self.is_3d = self.family == "fem.periodic" and getattr(first, "dimension", None) == 3
+        self.scattering = self.family == "fem.scattering"
+        self.antenna = self.family == "fem.antenna"
+        self.is_3d = getattr(first, "dimension", None) == 3
 
     def case_labels(self) -> list[str]:
-        labels = [_SPECTRUM] if self.spectrum else []
+        labels = []
         frequencies = getattr(self.result, "frequencies", None)
         for index in range(len(self.cases)):
             if frequencies is not None:
                 labels.append(f"Case {index}: {float(frequencies[index]) / 1e9:.6g} GHz")
             else:
                 labels.append(f"Case {index}")
-        return labels if self.spectrum or len(labels) > 1 else ["Result"]
+        return labels if len(labels) > 1 else ["Result"]
 
     def components(self, case: Any) -> list[str]:
+        if self.antenna:
+            from fem.antenna.visualization import COMPONENTS
+            components = list(COMPONENTS)
+            if case.magnetic_field is None:
+                components.remove("Total H")
+            return [*components, *(["Frequency sweep"] if hasattr(self.result, "cases") else [])]
+        if self.scattering:
+            from fem.scattering.visualization import field_views
+            return field_views(case)
         if self.static:
             two_d = case.coordinates.shape[1] == 2
             return ["potential", "Ex", *(["Ey"] if two_d else []), "E",
@@ -116,30 +117,25 @@ class _Source:
             names = list(fields.components)
             vectors = ('E', 'H', *_TRANSVERSE_COMPONENTS)
             return names + [n for n in vectors if n not in names]
-        names = [*_WAVE_COMPONENTS, *_TRANSVERSE_COMPONENTS]
-        if getattr(case, "nf2ff", None) is not None:
-            names += list(_FARFIELD)
-        return names
+        return [*_WAVE_COMPONENTS, *_TRANSVERSE_COMPONENTS]
 
     def mesh_data(self, case: Any) -> Any:
         mesh = getattr(case, "mesh_data", None)
         return mesh[0] if isinstance(mesh, tuple) else mesh
 
     def info(self, case: Any, mode: int) -> str:
+        if self.antenna:
+            return (f"{case.frequency/1e9:.6g} GHz   ·   incident {case.incident_power:.4g} W   ·   "
+                    f"accepted {case.accepted_power:.4g} W   ·   radiated {case.radiated_power:.4g} W")
+        if self.scattering:
+            return f"{case.frequency / 1e9:.6g} GHz   ·   {case.polarization}   ·   {case.solve_info['method']}"
         if self.static:
             return f"energy = {case.energy:.6g} J   (static field: E and D; no H)"
         if self.has_modes or hasattr(case, "neff"):
             selected = case.mode(mode) if self.has_modes else case
             neff = complex(selected.neff)
             return f"neff = {neff.real:.6g} {neff.imag:+.3g}j"
-        parts = []
-        s = getattr(case, "s_parameters", None)
-        if hasattr(s, "items"):
-            for key, value in s.items():
-                value = complex(np.asarray(value).ravel()[0])
-                name = f"S[{key[0]}, {key[1]}←{key[2]}]" if isinstance(key, tuple) and len(key) == 3 else f"S{key}"
-                parts.append(f"{name} = {abs(value):.4g} ∠ {np.degrees(np.angle(value)):.1f}°")
-        return "   ".join(parts[:8])
+        return ""
 
 
 def _application():
@@ -150,11 +146,11 @@ def _application():
 
 
 def _display_points(source: _Source, points: np.ndarray) -> np.ndarray:
-    """Plot coordinates in the orientation each family uses (scattering puts z horizontal)."""
+    """Return coordinates as a (nodes, dimension) array."""
     points = np.asarray(points, dtype=float)
     if points.ndim == 1:
         points = points[:, None]
-    return points[:, ::-1] if source.family == "fem.scattering" and points.shape[1] == 2 else points
+    return points
 
 
 def _draw_mesh(ax: Any, source: _Source, mesh: Any) -> None:
@@ -187,44 +183,21 @@ def _material_figure(source: _Source, mesh: Any, regions: tuple[np.ndarray, list
                      cmap=ListedColormap(colours), vmin=-0.5, vmax=len(labels) - 0.5)
         ax.set_aspect("equal", adjustable="box")
     axes = [f"{name} (m)" for name in mesh.axes]
-    if source.family == "fem.scattering":
-        axes = axes[::-1]
     ax.set_xlabel(axes[0])
     if len(axes) > 1:
         ax.set_ylabel(axes[1])
     handles = [Patch(color=colours[i], label=label) for i, label in enumerate(labels)]
-    handles += _draw_scene_lines(ax, getattr(case, "scene", None))
     ax.legend(handles=handles, loc="upper right", fontsize="small", framealpha=0.85)
     ax.set_title("Material regions")
     return figure
-
-
-_LINE_STYLES = {"pec": ("black", "-", 2.5), "pmc": ("tab:purple", "-", 2.0),
-                "wave_port": ("tab:red", "--", 1.5), "pml": ("tab:green", ":", 1.5)}
-
-
-def _draw_scene_lines(ax: Any, scene: Any) -> list[Any]:
-    """Draw scattering PEC/PMC sheets, ports and PML interfaces (z horizontal)."""
-    from matplotlib.lines import Line2D
-
-    handles, seen = [], set()
-    for line in getattr(scene, "lines", ()) or ():
-        colour, style, width = _LINE_STYLES.get(line.kind, ("grey", "-", 1.0))
-        x, z = np.asarray(line.endpoints).T
-        ax.plot(z, x, color=colour, linestyle=style, linewidth=width)
-        if line.kind not in seen:
-            seen.add(line.kind)
-            handles.append(Line2D([], [], color=colour, linestyle=style, linewidth=width,
-                                  label=line.kind.replace("_", " ").upper() if line.kind in ("pec", "pmc", "pml")
-                                  else "wave port"))
-    return handles
 
 
 class ResultViewer:
     """Window with case/mode/component/quantity selectors and mesh/material toggles."""
 
     def __init__(self, result: Any, *, title: str | None = None):
-        from PySide6.QtWidgets import (QCheckBox, QComboBox, QHBoxLayout, QLabel, QMainWindow,
+        from PySide6.QtCore import QTimer
+        from PySide6.QtWidgets import (QPushButton, QCheckBox, QComboBox, QHBoxLayout, QLabel, QMainWindow,
                                        QSpinBox, QVBoxLayout, QWidget)
 
         self._app = _application()
@@ -234,6 +207,7 @@ class ResultViewer:
         self._window.resize(1100, 760)
         self._canvas: Any = None
         self._plotter: Any = None
+        self._update_phase = None
 
         central = QWidget()
         self._layout = QVBoxLayout(central)
@@ -254,6 +228,30 @@ class ResultViewer:
         bar.addWidget(self._material)
         bar.addStretch(1)
         self._layout.addLayout(bar)
+        if self._source.antenna:
+            controls = QHBoxLayout()
+            self._phase = QSpinBox()
+            self._phase.setRange(0, 359)
+            self._phase.setSuffix("°")
+            self._phase.setWrapping(True)
+            self._phase.setPrefix("Phase ")
+            self._play = QPushButton("Animate phase")
+            self._play.setCheckable(True)
+            self._timer = QTimer(self._window)
+            self._timer.setInterval(80)
+            self._timer.timeout.connect(self._advance_phase)
+            self._play.toggled.connect(self._toggle_animation)
+            self._phase.valueChanged.connect(self._draw_phase)
+            controls.addWidget(self._phase)
+            controls.addWidget(self._play)
+            self._port = QComboBox()
+            self._inspect = QPushButton("View port modes")
+            self._port_windows = []
+            self._inspect.clicked.connect(self._open_port)
+            controls.addWidget(self._port)
+            controls.addWidget(self._inspect)
+            controls.addStretch()
+            self._layout.addLayout(controls)
         self._body = QVBoxLayout()
         self._layout.addLayout(self._body, 1)
         self._layout.addWidget(self._info)
@@ -269,19 +267,20 @@ class ResultViewer:
         self._case_changed()
 
     # -- state -------------------------------------------------------------
-    @property
-    def _is_spectrum(self) -> bool:
-        return self._source.spectrum and self._case.currentIndex() == 0
-
     def _current_case(self) -> Any:
-        index = self._case.currentIndex() - (1 if self._source.spectrum else 0)
-        return self._source.cases[max(index, 0)]
+        return self._source.cases[max(self._case.currentIndex(), 0)]
 
     def _quantities(self) -> list[str]:
-        if self._is_spectrum:
-            return list(_SPECTRUM_QUANTITIES)
-        if self._component.currentText() in _FARFIELD:
-            return list(_FARFIELD_QUANTITIES)
+        if self._source.antenna:
+            view = self._component.currentText()
+            from fem.antenna.visualization import VECTOR_FIELDS
+            if view in VECTOR_FIELDS:
+                return ["real", "imag"]
+            return ["dB", "phase"] if view in ("S-parameters", "Frequency sweep") else ["dBi"]
+        if self._source.scattering:
+            if self._component.currentText() == "RCS":
+                return ["m²" if self._source.is_3d else "m"]
+            return ["real", "imag", "magnitude"]
         if not self._source.static and self._component.currentText() in _TRANSVERSE_COMPONENTS:
             return ['real', 'imag', 'magnitude']
         return list(_STATIC_QUANTITIES if self._source.static else _QUANTITIES)
@@ -301,16 +300,27 @@ class ResultViewer:
         for widget in (self._mode, self._component):
             widget.blockSignals(True)
         try:
+            previous = self._component.currentText()
             self._component.clear()
-            if self._is_spectrum:
-                self._component.addItems(["S11", "S21"])
-            else:
-                case = self._current_case()
-                self._component.addItems(self._source.components(case))
-                self._mode.setRange(0, max(len(case) - 1, 0) if self._source.has_modes else 0)
-                default = self._component.findText("potential" if self._source.static else "E")
-                if default >= 0:
-                    self._component.setCurrentIndex(default)
+            case = self._current_case()
+            self._component.addItems(self._source.components(case))
+            offset = int("port_mesh" in getattr(case, "metadata", {}))
+            self._mode.setRange(offset, len(case) - 1 + offset if self._source.has_modes else 0)
+            if self._source.antenna:
+                previous_port = self._port.currentText()
+                self._port.clear()
+                self._port.addItems(list(case.port_modes))
+                self._port.setCurrentText(previous_port)
+                self._inspect.setVisible(bool(case.port_modes))
+                self._port.setVisible(bool(case.port_modes))
+            default = self._component.findText("potential" if self._source.static else "E")
+            if self._source.scattering:
+                default = next(i for i in range(self._component.count())
+                               if self._component.itemText(i).lower().startswith("total"))
+            if self._source.antenna:
+                default = self._component.findText(previous or "S-parameters")
+            if default >= 0:
+                self._component.setCurrentIndex(default)
         finally:
             for widget in (self._mode, self._component):
                 widget.blockSignals(False)
@@ -318,15 +328,46 @@ class ResultViewer:
 
     def _component_changed(self) -> None:
         self._set_quantities()
-        far = self._component.currentText() in _FARFIELD
-        field_view = not self._is_spectrum and not far
-        self._mode.setEnabled(self._source.has_modes and field_view)
-        self._mesh.setEnabled(field_view)
-        self._material.setEnabled(field_view)
+        self._mode.setEnabled(self._source.has_modes)
+        spatial = self._component.currentText() != "RCS"
+        if self._source.antenna:
+            from fem.antenna.visualization import VECTOR_FIELDS
+            spatial = self._component.currentText() in VECTOR_FIELDS
+            self._play.setVisible(spatial)
+            self._phase.setVisible(spatial)
+            if not spatial:
+                self._play.setChecked(False)
+        self._mesh.setEnabled(spatial)
+        self._material.setEnabled(spatial)
+        self._quantity.setEnabled(self._quantity.count() > 1)
         self._render()
 
     # -- drawing -----------------------------------------------------------
+    def _toggle_animation(self, active):
+        if active:
+            self._timer.start()
+        else:
+            self._timer.stop()
+
+    def _advance_phase(self):
+        if not self._window.isVisible():
+            self._play.setChecked(False)
+            return
+        self._phase.setValue((self._phase.value() + 10) % 360)
+
+    def _draw_phase(self):
+        if self._update_phase is not None:
+            self._update_phase(self._phase.value())
+            self._plotter.render()
+            self._plotter.interactor.update()
+
+    def _open_port(self):
+        self._port_windows = [w for w in self._port_windows if w._window.isVisible()]
+        self._port_windows.append(self._current_case().show_port_modes(port=self._port.currentText(),
+                                                                      block=False))
+
     def _clear_body(self) -> None:
+        self._update_phase = None
         if self._plotter is not None:
             self._plotter.close()
             self._plotter = None
@@ -339,22 +380,19 @@ class ResultViewer:
     def _render(self) -> None:
         component = self._component.currentText()
         quantity = self._quantity.currentText()
-        mode = self._mode.value()
+        mode = self._mode.value() - self._mode.minimum()
         self._clear_body()
         message = ""
         try:
-            if self._is_spectrum:
-                widget = self._matplotlib(self._source.result.plot(component=component, quantity=quantity))
-                self._info.setText("")
+            case = self._current_case()
+            if self._source.antenna and component in ("S-parameters", "Frequency sweep"):
+                result = case if component == "S-parameters" else self._source.result
+                widget = self._matplotlib(result.plot(quantity=quantity))
+            elif self._source.is_3d:
+                widget, message = self._pyvista(case, mode, component, quantity)
             else:
-                case = self._current_case()
-                if component in _FARFIELD:
-                    widget = self._matplotlib(self._farfield_figure(case, component, quantity))
-                elif self._source.is_3d:
-                    widget, message = self._pyvista(case, case.mode(mode), component, quantity)
-                else:
-                    widget, message = self._field_2d(case, mode, component, quantity)
-                self._info.setText(self._source.info(case, mode))
+                widget, message = self._field_2d(case, mode, component, quantity)
+            self._info.setText(self._source.info(case, mode))
             if message:
                 self._status.showMessage(message)
             else:
@@ -386,8 +424,21 @@ class ResultViewer:
 
     def _field_2d(self, case: Any, mode: int, component: str, quantity: str):
         mesh = self._source.mesh_data(case)
+        if self._source.scattering:
+            figure = case.plot(component=component, quantity=quantity)
+            message = ""
+            if component != "RCS":
+                message = _transverse_overlays(figure.axes[0], self._source, mesh,
+                                               self._mesh.isChecked(), self._material.isChecked())
+                if self._material.isChecked():
+                    from matplotlib.collections import LineCollection
+                    boundaries = mesh.metadata.get("boundary_facets", {})
+                    for kind, edges in boundaries.items():
+                        figure.axes[0].add_collection(LineCollection(mesh.coordinates[edges],
+                            colors="#b87333" if kind == "sibc" else "black", linewidths=1.8))
+            return self._matplotlib(figure), message
         if component in (*_TRANSVERSE_COMPONENTS, "Dt"):
-            if self._source.static or self._source.family == "fem.scattering":
+            if self._source.static:
                 figure = case.plot(component=component, quantity=quantity)
             else:
                 from matplotlib.figure import Figure
@@ -415,28 +466,6 @@ class ResultViewer:
                 _draw_mesh(figure.axes[0], self._source, mesh)
         return self._matplotlib(figure), message
 
-    @staticmethod
-    def _farfield_figure(case: Any, kind: str, quantity: str):
-        from matplotlib.figure import Figure
-
-        name, in_db = _FARFIELD_QUANTITIES[quantity]
-        theta = (np.arange(720) + 0.5) * 2 * np.pi / 720
-        values = np.asarray(getattr(case.far_field(theta), name), dtype=float)
-        if in_db:
-            values = 10 * np.log10(np.maximum(values, np.finfo(float).tiny))
-        figure = Figure()
-        if kind == _FARFIELD[0]:
-            axis = figure.add_subplot(projection="polar")
-            axis.plot(theta, values)
-            axis.set_theta_zero_location("E")
-        else:
-            axis = figure.subplots()
-            axis.plot(np.degrees(theta), values)
-            axis.set_xlabel("theta (deg)")
-            axis.grid(True)
-        axis.set_title(quantity)
-        return figure
-
     def _matplotlib(self, figure: Any):
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
         from PySide6.QtWidgets import QVBoxLayout, QWidget
@@ -454,9 +483,18 @@ class ResultViewer:
         from pyvistaqt import QtInteractor
 
         plotter = QtInteractor(self._window)
-        message = populate_3d(plotter, mode, self._source.mesh_data(case), component, quantity,
-                              mesh_overlay=self._mesh.isChecked(), material=self._material.isChecked(),
-                              boundary_facets=case.metadata.get("boundary_facets"))
+        overlays = dict(mesh_overlay=self._mesh.isChecked(), material=self._material.isChecked())
+        if self._source.antenna:
+            from fem.antenna.visualization import draw_3d
+            message, self._update_phase = draw_3d(plotter, case, component, quantity,
+                                                  phase_deg=self._phase.value(), **overlays)
+        elif self._source.scattering:
+            from fem.scattering.visualization import draw_3d
+            message = draw_3d(plotter, case, component, quantity, **overlays)
+        else:
+            message = populate_3d(plotter, case.mode(mode), self._source.mesh_data(case), component,
+                                  quantity, boundary_facets=case.metadata.get("boundary_facets"),
+                                  **overlays)
         self._plotter = plotter
         return plotter.interactor, message
 
@@ -531,6 +569,13 @@ def populate_3d(plotter: Any, mode: Any, mesh: Any, component: str, quantity: st
         cloud[label] = np.asarray(fields.quantity(component, quantity))
         plotter.add_mesh(cloud, scalars=label, cmap="RdBu_r" if quantity in ("real", "imag") else "viridis",
                          render_points_as_spheres=True, point_size=6)
+    return add_3d_overlays(plotter, mesh, mesh_overlay=mesh_overlay, material=material,
+                           boundary_facets=boundary_facets)
+
+
+def add_3d_overlays(plotter, mesh, *, mesh_overlay, material, boundary_facets=None):
+    import pyvista as pv
+
     message = ""
     if mesh is not None and (mesh_overlay or material):
         grid = _tetra_grid(mesh)
@@ -565,6 +610,12 @@ def populate_3d(plotter: Any, mode: Any, mesh: Any, component: str, quantity: st
                 plotter.add_mesh(surface, name=f"boundary_{kind}", color=colour,
                                  opacity=0.45, show_edges=False)
                 legend.append([kind.upper(), colour])
+            for name, triangles in boundaries.items():
+                if name.startswith("port:"):
+                    faces = np.column_stack((np.full(len(triangles), 3), triangles))
+                    surface = pv.PolyData(mesh.coordinates, faces.ravel())
+                    plotter.add_mesh(surface, name=name, color="teal", opacity=.7)
+                    legend.append([name.removeprefix("port:"), "teal"])
             if legend:
                 plotter.add_legend(legend, bcolor="white", face="rectangle", loc="upper left",
                                    size=(0.45, 0.05 * len(legend) + 0.02))
@@ -607,7 +658,7 @@ def _tetra_grid(mesh: Any):
 
 
 def add_arrows(plotter: Any, points: np.ndarray, components: list[np.ndarray], quantity: str,
-               *, label: str, max_arrows: int = _MAX_ARROWS) -> Any:
+               *, label: str, max_arrows: int = _MAX_ARROWS, actor_name=None) -> Any:
     """Draw a complex 3D vector field as arrows coloured by its magnitude; return the arrows.
 
     ``real``/``imag`` draw that part of the phasor; ``magnitude``/``phase`` draw
@@ -623,9 +674,16 @@ def add_arrows(plotter: Any, points: np.ndarray, components: list[np.ndarray], q
     cloud["vectors"] = shown[::step]
     cloud[label] = magnitude[::step]
     span = float(np.max(np.ptp(points, axis=0))) or 1.0
-    largest = float(np.max(np.linalg.norm(shown, axis=1))) or 1.0
+    largest = float(magnitude.max() if actor_name else np.max(np.linalg.norm(shown, axis=1))) or 1.0
     arrows = cloud.glyph(orient="vectors", scale="vectors", factor=0.08 * span / largest)
-    plotter.add_mesh(arrows, scalars=label, cmap="viridis")
+    if actor_name and actor_name in plotter.actors:
+        # Update the glyphs on phase changes without reframing the camera.
+        arrows.set_active_scalars(label)
+        mapper = plotter.actors[actor_name].mapper
+        mapper.dataset.copy_from(arrows, deep=False)
+        mapper.update()
+    else:
+        plotter.add_mesh(arrows, scalars=label, cmap="viridis", name=actor_name)
     return arrows
 
 

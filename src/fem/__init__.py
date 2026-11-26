@@ -25,6 +25,7 @@ substrate::
 """
 
 from ._version import __version__
+from .antenna import AntennaResult, AntennaSolver3D, AntennaSweep
 from .common import materials, shapes
 from .common.constants import C_0, EPSILON_0, MU_0, TIME_CONVENTION
 from .common.dispersion import plot_dispersion
@@ -50,10 +51,13 @@ from .periodic import (
     PeriodicModeSolver3D,
     PeriodicSweepResult,
 )
-from .scattering import ScatteringResult, ScatteringSolver2D, ScatteringSweepResult
+from .scattering import ScatteringResult, ScatteringSolver2D, ScatteringSolver3D
 from .waveguide import Mode, ModeSet, ModeSolver1D, ModeSolver2D
 
 __all__ = [
+    "AntennaResult",
+    "AntennaSolver3D",
+    "AntennaSweep",
     "C_0",
     "EPSILON_0",
     "MU_0",
@@ -80,7 +84,7 @@ __all__ = [
     "PersistenceError",
     "ScatteringResult",
     "ScatteringSolver2D",
-    "ScatteringSweepResult",
+    "ScatteringSolver3D",
     "SolverError",
     "SurfaceImpedance",
     "ViewerError",

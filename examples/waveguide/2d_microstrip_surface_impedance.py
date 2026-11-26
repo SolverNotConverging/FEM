@@ -21,10 +21,8 @@ solver.add_rectangle(x_range=(-6 * MM, 6 * MM), y_range=(0.0, 1.524 * MM), name=
 solver.add_rectangle(x_range=(-6 * MM, 6 * MM), y_range=(-35 * UM, 0.0), name="copper_ground", material=copper)
 solver.add_rectangle(x_range=(-1.5 * MM, 1.5 * MM), y_range=(1.524 * MM, 1.524 * MM + 35 * UM),
                      name="copper_strip", material=copper)
-mesh = solver.mesh(max_element_size=0.6 * MM, wavelength_elements=10)
-print(f"mesh: {mesh.info.nodes} nodes, {mesh.info.elements} triangles")
 
-modes = solver.solve(backend="auto", num_modes=1, max_refinements=0)
+modes = solver.solve(backend="auto", num_modes=1, max_refinements=2)
 mode = modes[0]
 print(f"neff = {mode.neff:.6f}, loss = {mode.alpha * 8.686:.3f} dB/m, residual = {mode.residual:.1e}")
 

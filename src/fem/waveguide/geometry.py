@@ -11,32 +11,17 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from .boundaries import validate_surface_impedance
-from .exceptions import ConfigurationError, GeometryError
+from .exceptions import GeometryError
 from fem.common.diagonal import DiagonalMaterial, MaterialInput
+from fem.common.pml import PMLSpec
 
 
 FloatArray: TypeAlias = NDArray[np.float64]
 
 
-_PML_SIDES: dict[str, frozenset[str]] = {
-    "x-": frozenset(("x-",)),
-    "x+": frozenset(("x+",)),
-    "x": frozenset(("x-", "x+")),
-    "y-": frozenset(("y-",)),
-    "y+": frozenset(("y+",)),
-    "y": frozenset(("y-", "y+")),
-    "all": frozenset(("x-", "x+", "y-", "y+")),
-}
-
 _RESERVED_BOUNDARY_NAMES = frozenset(
     ("pec", "pmc", "impedance", "outer_pec", "outer_pmc")
 )
-
-
-def _pml_sides(direction: str) -> frozenset[str]:
-    """Expand a compact PML direction into the exterior sides it owns."""
-
-    return _PML_SIDES[direction]
 
 
 def physical_span(value: float | Sequence[float], name: str) -> tuple[float, float]:
@@ -223,31 +208,6 @@ class MeshRefinement:
         object.__setattr__(self, "transition_width", transition)
 
 
-@dataclass(frozen=True, slots=True)
-class PMLSpec:
-    thickness: float
-    order: int = 3
-    sigma_max: float = 5.0
-    direction: str = "all"
-
-    def __post_init__(self) -> None:
-        if not np.isfinite(self.thickness) or self.thickness <= 0.0:
-            raise ConfigurationError("PML thickness must be finite and positive.")
-        if isinstance(self.order, bool) or int(self.order) != self.order or self.order < 1:
-            raise ConfigurationError("PML order must be a positive integer.")
-        if not np.isfinite(self.sigma_max) or self.sigma_max < 0.0:
-            raise ConfigurationError("PML sigma_max must be finite and nonnegative.")
-        if self.direction not in ("x-", "x+", "x", "y-", "y+", "y", "all"):
-            raise ConfigurationError(
-                "PML direction must be 'x-', 'x+', 'x', 'y-', 'y+', 'y', or 'all'."
-            )
-
-    def stretch(self, depth: ArrayLike) -> NDArray[np.complex128]:
-        clipped = np.clip(np.asarray(depth, dtype=float), 0.0, self.thickness)
-        return np.asarray(
-            1.0 - 1j * self.sigma_max * (clipped / self.thickness) ** self.order,
-            dtype=np.complex128,
-        )
 
 
 class _GeometryBase:
@@ -332,11 +292,11 @@ class GeometryModel1D(_GeometryBase):
         if spec.direction not in ("x-", "x+", "x", "all"):
             raise GeometryError("A 1D mode PML only accepts x directions.")
         width = self.x_span[1] - self.x_span[0]
-        requested = _pml_sides(spec.direction) & {"x-", "x+"}
+        requested = set(spec.sides("x"))
         covered = {
             side
             for existing in self.pmls
-            for side in (_pml_sides(existing.direction) & {"x-", "x+"})
+            for side in existing.sides("x")
         }
         repeated = requested & covered
         if repeated:
@@ -346,7 +306,7 @@ class GeometryModel1D(_GeometryBase):
         widths = {
             side: existing.thickness
             for existing in self.pmls
-            for side in (_pml_sides(existing.direction) & {"x-", "x+"})
+            for side in existing.sides("x")
         }
         widths.update({side: spec.thickness for side in requested})
         if widths.get("x-", 0.0) + widths.get("x+", 0.0) >= width:
@@ -428,9 +388,9 @@ class GeometryModel2D(_GeometryBase):
     def add_pml(self, spec: PMLSpec) -> PMLSpec:
         xwidth = self.x_span[1] - self.x_span[0]
         ywidth = self.y_span[1] - self.y_span[0]
-        requested = _pml_sides(spec.direction)
+        requested = set(spec.sides("xy"))
         covered = {
-            side for existing in self.pmls for side in _pml_sides(existing.direction)
+            side for existing in self.pmls for side in existing.sides("xy")
         }
         repeated = requested & covered
         if repeated:
@@ -440,7 +400,7 @@ class GeometryModel2D(_GeometryBase):
         widths = {
             side: existing.thickness
             for existing in self.pmls
-            for side in _pml_sides(existing.direction)
+            for side in existing.sides("xy")
         }
         widths.update({side: spec.thickness for side in requested})
         if widths.get("x-", 0.0) + widths.get("x+", 0.0) >= xwidth:

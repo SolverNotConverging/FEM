@@ -32,7 +32,14 @@ class ElectrostaticResult(ResultMixin):
     element_displacement_field: NDArray[np.float64] | None = None
     adaptive_history: tuple[Mapping[str, object], ...] = ()
 
+    potential_coefficients: NDArray[np.float64] | None = None
+
     def __post_init__(self) -> None:
+        if self.potential_coefficients is not None:
+            coefficients = np.asarray(self.potential_coefficients, dtype=float)
+            if coefficients.ndim != 1 or not np.isfinite(coefficients).all():
+                raise ValueError("potential_coefficients must be a finite vector.")
+            object.__setattr__(self, "potential_coefficients", coefficients)
         for name in ("potential", "electric_field", "displacement_field", "reaction"):
             values = np.asarray(getattr(self, name), dtype=float)
             if not np.isfinite(values).all():

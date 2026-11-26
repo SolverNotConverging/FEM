@@ -1,182 +1,144 @@
-FEM Waveguide Scattering Solver
-===============================
+Plane-wave electromagnetic scattering
+=====================================
 
-.. contents:: On this page
-   :local:
-   :depth: 2
+Choose ``ScatteringSolver2D`` for targets invariant along z, or
+``ScatteringSolver3D`` for a finite target. Both solve for a single plane
+wave in vacuum. Lengths are in metres and frequency is in hertz.
 
-First example
--------------
-
-After ``pip install -e .`` (see `getting started <../getting_started.md>`_), run from
-the repository root::
-
-    python examples/scattering/2d_uniform_waveguide.py
-
-The uniform guide should have effective index near 1, reflection near 0, and transmission near 1. The FEM Waveguide Scattering Viewer opens the result.
-
-This example opens the interactive viewer when calling ``show()``.
-For numerical runs without windows, omit ``show()`` or the plotting call;
-FEM results also offer ``plot()`` for static figures.
-
-Open the `first example <../../examples/scattering/2d_uniform_waveguide.py>`_ to change
-geometry and controls. The `example index <../../examples/scattering/README.rst>`_
-provides a learning order and more physical problems. Scripts run from any working directory once FEM is installed.
-
-Scripts that save results write to ``examples/scattering/outputs/<example>/``.
-
-Working with the solver
------------------------
-
-1. Construct the solver with keyword arguments and physical lengths in metres.
-2. Add geometry, material properties, and boundary or excitation conditions.
-3. Call ``mesh(...)`` to choose spatial and element resolution.
-4. Call ``solve(...)`` to obtain a typed result; ``max_refinements=0`` uses one fixed mesh.
-5. Inspect diagnostics, then call ``show()``, ``plot()``, or ``save(path)`` explicitly.
-
-Before the scattering solve, use ``solve_modes()`` and ``set_incident_mode(0)``
-to configure the first lead mode. The mesh is 2D; the fields are 2.5D full-vector.
-
-
-A **2.5D full-vector** scattered-field solver on a two-dimensional x/z mesh.
-The invariant-direction factor is ``exp(-i*ky*y)``.
-
-Workflow
---------
+2D cylinder
+-----------
 
 .. code-block:: python
 
     import fem
 
-    solver = fem.ScatteringSolver2D(frequency=10e9, x_range=.04,
-                                    z_range=(-.1, .1), boundary=fem.materials.PEC)
-    solver.add_pml(thickness=.03, direction="z")
-    solver.mesh(max_element_size=.005)
-    solver.solve_modes(num_modes=1, neff_guess=.9, max_refinements=0)
-    solver.set_incident_mode(0)
-    result = solver.solve(max_refinements=0)
-    result.save("scattering.h5")
-    loaded = fem.load("scattering.h5")
-    print(loaded.S11, loaded.S21)
-    loaded.show()
+    solver = fem.ScatteringSolver2D(frequency=3e9, x_range=(-.163, .163),
+                                    y_range=(-.163, .163), polarization="TE",
+                                    direction=(1, 0))
+    rod = fem.shapes.Circle(center=(0, 0), radius=.02)
+    solver.add_geometry(shape=rod, material=fem.Material(epsilon=2.25))
+    solver.add_pml(thickness="auto")
+    solver.add_nf2ff(distance="auto")
+    result = solver.solve(backend="auto")
+    result.show()
+    print(result.radar_cross_section([[-1, 0], [1, 0]]))  # back and forward width (m)
 
-``solve()`` automatically meshes when needed and never saves or opens a window.
-The adaptive defaults are two refinements and a relative tolerance of 0.05.
-When ``solve()`` sets up the ports, it launches mode zero and retains the
-validated forward propagating lead modes for outgoing power and matched-port
-boundaries. Transverse-PML ports retain bound guided modes. Frequency sweeps
-discover these modes at each frequency. To choose the basis explicitly, call
-``solve_modes(num_modes=...)`` before ``solve()``.
-The example uses a fixed mesh for reproducibility. Geometry edits invalidate
-``mesh_data`` and ``result``; an automatic rebuild reuses explicit mesh settings.
+TE means transverse electric to z and solves for Hz (A/m). TM solves for Ez
+(V/m). The incident scalar amplitude is one. The propagation direction is a
+Cartesian vector in the xy plane. Phasors use exp(+iωt) and the incident
+spatial phase is exp(−ik d·x), with the phase origin at the coordinate origin.
+The complex nodal arrays ``incident``, ``scattered`` and ``total`` share the same
+mesh. ``result.plot(quantity="real")`` returns a Matplotlib figure showing all
+three fields and the polar scattering width. Use ``imag`` or ``magnitude`` for
+the other field views. For each of the incident, total and scattered fields,
+the viewer offers **Et** and **Hz** for TE, or **Ez** and **Ht** for TM.
+Et and Ht use arrows at triangle centres, coloured by the complex vector
+magnitude. Real and imaginary views show the corresponding signed direction.
+Ez and Hz use nodal heat maps. Select RCS for the polar scattering width.
+For example, ``result.plot(component="Total Et", quantity="real")`` plots the
+TE electric field. The complex x and y components at triangle centres are
+available as ``incident_transverse``, ``total_transverse`` and ``scattered_transverse``.
 
-``show()`` opens the interactive PyVista/Qt viewer (``fem view result.h5`` opens saved
-archives). Saving and loading work without a display.
+3D target and surface impedance
+-------------------------------
 
-Select ``Et`` or ``Ht`` in the viewer, or call ``result.plot(component="Et")``
-or ``result.plot(component="Ht")``, to draw the total electric or magnetic
-field in the x-z plane. The z component points horizontally and the x component
-vertically. Colour gives the in-plane phasor magnitude in V/m or A/m.
-Select ``real`` or ``imag`` for signed arrows, or ``magnitude`` for a
-globally phase-aligned view. In a sweep, select a frequency case to view its fields.
+.. code-block:: python
 
-``slot = solver.add_slot(geometry=sheet, z_range=(z0, z1))`` cuts an opening
-in a background PEC sheet. Use ``solver.remove(geometry=slot)`` to close it.
-Remove dependent slots before removing their parent sheet.
+    solver = fem.ScatteringSolver3D(frequency=3e9, x_range=(-.093, .093),
+                                    y_range=(-.093, .093), z_range=(-.093, .093),
+                                    direction=(1, 0, 0), electric_vector=(0, 1, 0))
+    sphere = fem.shapes.Sphere(center=(0, 0, 0), radius=.015)
+    solver.add_geometry(shape=sphere, material=fem.materials.copper)
+    result = solver.solve(backend="gpu")
+    print(result.radar_cross_section([[-1, 0, 0]]))  # monostatic RCS (m²)
+    result.export_vtk("outputs/sphere.vtm")
+    result.show()
 
-Electromagnetic fields use ``exp(+i*omega*t)`` and guided propagation
-``exp(-i*beta*z)``. Passive constitutive values have nonpositive imaginary
-parts; forward attenuation is ``-Im(beta)``.
+The 3D solver uses Nédélec edge elements. The incident E vector
+is linearly polarized, transverse to propagation, and normalized to 1 V/m.
+The field arrays have shape (tetrahedra, 3) and sample the electric field at
+cell centres. Select incident, total or scattered in the shared viewer to see
+electric-field arrows. Real and imaginary views orient the arrows by that
+phasor part. Magnitude uses a global phase reference. Colour gives the full
+vector magnitude in V/m. Select RCS to display the radial surface. The mesh
+and material toggles overlay the geometry in spatial field views. In ParaView,
+open the VTM collection and select the fields or RCS block. Real and imaginary
+Cartesian vectors and their magnitudes are available for each field. Keep
+the accompanying dataset directory with the VTM file.
 
-Persistence and API
--------------------
+Materials and accuracy
+----------------------
 
-Results use the ``fem-results`` HDF5 envelope, schema ``1.0``. Old archives
-are rejected. Loading supports inspection, plotting, and saving, not solver
-restart or Python callback restoration. PortMode indices are zero-based.
+Assign an isotropic ``fem.Material(epsilon=..., mu=...)``, ``fem.materials.PEC``,
+a constant ``fem.SurfaceImpedance(impedance=...)`` in ohms, or a
+frequency-dependent ``fem.GoodConductor`` such as ``fem.materials.copper``.
+For surface impedance (SIBC) and PEC, the solver meshes the exterior and
+applies the condition directly on the target surface. Bulk dielectric and
+magnetic regions retain their interior fields. Later objects take precedence
+in overlaps. All objects must fit inside the box with a vacuum margin.
 
-See the `API reference <../api/scattering.rst>`_ for supported configuration,
-results, units, defaults, and exceptions. Run bundled examples from the repository
-root with ``python examples/scattering/<example>.py``.
+The supplied box ranges include a Cartesian perfectly matched layer
+(PML) on every side by default. The layer absorbs the scattered field with a polynomial
+stretch in each exterior coordinate and a zero scalar or tangential electric
+field at the outer wall. Field plots, exports and RCS sources cover the
+physical domain. By default each side has five layers spanning one third of
+the free-space wavelength. Use ``add_pml(thickness="auto", order=3, sigma_max=5.0,
+direction="all")`` or assign profiles to individual faces such as ``"x+"``.
+An explicit selection terminates uncovered sides with zero scattered scalar or
+tangential electric field. Set ``pml_layers`` at construction to vary absorber
+resolution and check RCS convergence. Independently check spatial
+convergence by refining the physical mesh at fixed box size. Resolve the shortest
+material wavelength and geometric features. To refine a target locally,
+call ``add_mesh_refinement(shape=region, max_element_size=h)`` before
+``mesh()``. Use a rectangle or circle in 2D, or a box or sphere in 3D.
+Overlapping size controls use the smallest target.
 
-See the `family example index <../../examples/scattering/README.rst>`_
-for learning order, output locations, and viewer requirements.
+``add_nf2ff(distance="auto")`` places a closed vacuum contour in 2D or a
+surface in 3D. Each face sits 0.3 free-space wavelengths inside the PML
+interface, capped at half the available clearance to the target on that side.
+Pass a positive distance in metres for a uniform inset or supply explicit
+``x_range``, ``y_range`` and, in 3D, ``z_range``. The surface must enclose all
+targets with vacuum on both sides. Automatic PML and NF2FF settings also
+apply when the methods are omitted. The mesh records the resolved monitor
+coordinates in ``mesh_data.info["nf2ff_bounds"]``.
 
-Matched ports and closed-contour far fields
------------------------------------------------
+``radar_cross_section(directions)`` integrates the scattered field and its
+derivative on the NF2FF contour or surface. In 2D it returns
+the far-field limit of 2πr times the scattered-to-incident intensity ratio
+(scattering width in m). In 3D the factor is 4πr² (area in m²). Observation
+directions are Cartesian unit vectors pointing away from the target. The
+negative incident direction gives backscatter. In the VTK RCS block, radius
+and colour both give the linear cross section in m². The point-data array
+``direction`` stores the observation vector, including at pattern nulls.
 
-Configure ``solver.set_matched_ports()`` to replace the two longitudinal PEC
-terminations with modal electric-to-magnetic maps. Omit longitudinal z PML in
-this configuration; transverse x PML is still required for an open guide.
-Every retained mode is matched. Unrepresented boundary traces use a local
-normal-incidence impedance approximation, so port distance and mode count
-remain convergence controls. Longitudinal PML remains an alternative, including
-for the far-field calculation.
+Execution and outputs
+---------------------
 
-Call ``solver.set_nf2ff_contour(...)`` before meshing. This constructs a
-**closed rectangle with all four sides**, including the sections that cross
-the continuing waveguide. The contour must enclose every actual/background
-perturbation and lie before the PML. Its default x bounds are the physical
-x/PML interfaces and its default z bounds are the two modal monitors.
+The 2D scalar formulation defaults to quadratic triangles and the 3D vector
+formulation defaults to second-order Nédélec tetrahedra. Both support
+first order through ``mesh(element_order=1)`` and use degree-five
+quadrature. Set the orders with ``mesh(element_order=..., quadrature_order=...)``.
+The tetrahedral geometry is affine at either field order. Refine the surface
+mesh to resolve the curvature of a smooth target.
+By default ``solve(max_refinements=2, adaptive_tolerance=0.05)`` checks
+physical-domain flux jumps after each solve and refines the cells with the
+largest contributions. A zero budget uses the current mesh. The final
+residual and stopping reason are available in ``result.solve_info``.
+Automatic meshing targets six elements per local wavelength at order two and
+ten at order one. The dielectric sizing applies inside the target so that
+vacuum and its exterior PML can use the free-space wavelength.
 
-For example, after configuring a slab or grounded-slot geometry::
+For a 3D PEC or impedance target, select **Surface current** to inspect
+the total-field conductor current. The VTK ``surface_current`` block
+stores real and imaginary vectors in A/m at each triangle's corners.
+Separate corner values preserve the two one-sided traces at a sharp edge.
 
-    import numpy as np
+``backend="cpu"`` uses SciPy. ``backend="gpu"`` and ``backend="hybrid"`` use
+NVIDIA cuDSS for the sparse complex direct solve. ``backend="auto"`` probes
+cuDSS and falls back to SciPy with a warning if unavailable. Assembly and
+far-field evaluation run on the CPU. See `CUDA setup <../acceleration.md>`_.
 
-    solver.set_matched_ports()
-    solver.set_nf2ff_contour(x_range=(-0.012, 0.012),
-                            z_range=(-0.015, 0.015))
-    solver.mesh(max_element_size=0.001, element_order=2)
-    solver.solve_modes(num_modes=1, neff_guess=1.8,
-                       num_elements=384, max_refinements=0)
-    solver.set_incident_mode(0)
-    result = solver.solve(max_refinements=0)
-    theta = (np.arange(360) + 0.5) * 2 * np.pi / 360
-    far = result.far_field(theta)
-    print(far.integrated_power())  # radiative power, W/m
-    print(far.directivity.max(), far.gain.max(), far.realized_gain.max())
-    result.save("outputs/scattering-with-contour.h5")
-
-The reciprocal test fields solve the infinite x-stratified background, including
-PEC sheets. Thus the transform handles a guide crossing the closed contour
-without deleting contour segments or treating the guide as homogeneous space.
-Backgrounds must be isotropic and piecewise constant in x; observation
-half-spaces must be lossless with positive epsilon and mu. Callback backgrounds
-require an explicit ``LayeredExterior``. Material samples outside the contour
-are checked against that exterior on the FEM quadrature. With callbacks this is
-a numerical check, not proof of their values between samples.
-
-Angles are radians from +x toward +z, distinct from the solver's incidence
-``angle`` in degrees. Exact grazing directions are excluded; the midpoint
-angular grid above avoids them. This is a 2.5D cylindrical far field for the
-prescribed ``ky``, not a finite antenna's spherical 3D pattern. The complex
-``amplitude`` satisfies ``E ~ amplitude*exp(-i*q*rho-i*ky*y)/sqrt(rho)``.
-``power_density`` is W/m/radian and includes the transverse ``q/k`` factor.
-``directivity``, ``gain``, and ``realized_gain`` are 2D isotropic-reference
-ratios: ``2*pi*power_density`` divided by integrated NF2FF radiated power,
-accepted power (incident minus reflected), or incident power, respectively.
-Use ``10*log10(value)`` for dB relative to a uniform line radiator; these are
-not spherical 3D dBi values. Zero radiation leaves directivity undefined (NaN).
-These quantities are available from ``result.nf2ff`` and saved archives.
-Integration excludes guided power, while ``result.nf2ff.outward_power`` includes
-the guided contribution of the scattered field. The existing ``radiated_power``
-remains an independent flux/modal estimate; compare it with the integrated
-pattern as a convergence diagnostic rather than forcing agreement.
-
-Archives preserve all contour samples, quadrature, and exterior layers, so
-``fem.load(...).far_field(new_angles)`` needs no FEM solve. Test convergence
-by refining the mesh and quadrature, moving the contour, moving the ports,
-and comparing modal-port termination with z PML.
-
-The layered reciprocal approach follows the principle described by
-`Yang, Hugonin, and Lalanne, Near-to-Far Field Transformations for Radiative and
-Guided Waves <https://arxiv.org/abs/1510.06344>`_; the implementation uses the
-project's 2.5D geometry and positive-time phasor convention.
-
-CUDA acceleration
------------------
-
-``backend="auto"`` (the default) selects GPU when CuPy, an NVIDIA device and
-cuDSS are available, otherwise SciPy CPU; ``backend="gpu"`` requires the GPU.
-Assembly, meshing and adaptive refinement stay on the CPU. See
-`acceleration <../acceleration.md>`_ for installation and device checks.
+``result.save("case.h5")`` stores the mesh, complex fields and equivalent
+sources. ``fem.load("case.h5")`` supports visualization and new observation
+directions. See the `examples <../../examples/scattering/README.rst>`_ and
+`API reference <../api/scattering.rst>`_.

@@ -21,6 +21,11 @@ def solve_periodic(solver, dimension, args, options, max_refinements, adaptive_t
             system = solver._systems[mode.polarization] if dimension == 2 else solver.system
             material = lambda *coordinates: solver.geometry.transformed_material_at(
                 *(coordinate / solver.k0 for coordinate in coordinates))
+            magnetic_primary = dimension == 2 and system.polarization == "TM"
+
+            def estimator_material(*coordinates):
+                epsilon, mu = material(*coordinates)
+                return (mu, epsilon) if magnetic_primary else (epsilon, mu)
 
             def fields(basis, coefficient):
                 field = basis.interpolate(mode.coefficients)
@@ -36,10 +41,14 @@ def solve_periodic(solver, dimension, args, options, max_refinements, adaptive_t
                 if system.polarization == "TE":
                     return np.stack((zero, primary, zero)), np.stack(
                         (-1j * longitudinal / mu[0], zero, 1j * derivative[0] / mu[2]))
-                return np.stack((1j * longitudinal / eps[0], zero, -1j * derivative[0] / eps[2])), np.stack((zero, primary, zero))
+                # In TM the continuous nodal field is H_y. Test its normal-B
+                # and tangential-E jumps by electromagnetic duality.
+                return np.stack((zero, primary, zero)), np.stack(
+                    (1j * longitudinal / mu[0], zero, -1j * derivative[0] / mu[2]))
 
             indicator, residual = maxwell_jump_residual(
-                system.basis, fields, material, axes=(0, 2) if dimension == 2 else (0, 1, 2),
+                system.basis, fields, estimator_material, axes=(0, 2) if dimension == 2 else (0, 1, 2),
+                quadrature_order=system.quadrature_order,
                 periodic_node_pairs=(np.column_stack((solver.mesh_data.slave_nodes, solver.mesh_data.master_nodes))
                                      if dimension == 2 else solver.mesh_data.periodic_node_pairs),
             )

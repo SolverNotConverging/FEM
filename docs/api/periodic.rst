@@ -390,7 +390,9 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
 
 .. code-block:: python
 
-    PeriodicModeSolver2D.add_pml(*, thickness: 'float', order: 'int' = 3, sigma_max: 'float' = 5.0, direction: 'str' = 'x') -> 'PMLSpec'
+    PeriodicModeSolver2D.add_pml(*, thickness: "float | Literal['auto']" = 'auto', order: 'int' = 3, sigma_max: 'float' = 5.0, direction: 'str' = 'all') -> 'PMLSpec'
+
+Add a polynomial PML on selected exterior sides. Auto thickness is one third wavelength.
 
 .. list-table:: Arguments
    :header-rows: 1
@@ -402,10 +404,10 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
      - Default
      - Meaning
    * - ``thickness``
-     - ``float``
-     - Required
-     - ``—``
-     - PML thickness in metres, at each selected exterior end.
+     - ``float | Literal['auto']``
+     - Optional
+     - ``'auto'``
+     - Thickness in metres inside each selected outer face. Auto uses one third of the free-space wavelength.
    * - ``order``
      - ``int``
      - Optional
@@ -419,7 +421,7 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
    * - ``direction``
      - ``str``
      - Optional
-     - ``'x'``
+     - ``'all'``
      - Propagation direction for solve; selected coordinate direction for PML.
 
 Returns: the configured geometry/excitation handle, or None for in-place configuration.
@@ -479,7 +481,7 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
 
 .. code-block:: python
 
-    PeriodicModeSolver2D.mesh(*, max_element_size: 'float | None' = None, resolution: 'tuple[int, int] | None' = None, wavelength_elements: 'int' = 4, element_order: 'int' = 1, quadrature_order: 'int' = 4)
+    PeriodicModeSolver2D.mesh(*, max_element_size: 'float | None' = None, resolution: 'tuple[int, int] | None' = None, wavelength_elements: 'int' = 4, element_order: 'int' = 2, quadrature_order: 'int' = 5)
 
 Build the initial mesh; solve() may subsequently refine it.
 
@@ -510,13 +512,13 @@ Build the initial mesh; solve() may subsequently refine it.
    * - ``element_order``
      - ``int``
      - Optional
-     - ``1``
+     - ``2``
      - Finite-element polynomial order supported by this backend.
    * - ``quadrature_order``
      - ``int``
      - Optional
-     - ``4``
-     - Element integration order.
+     - ``5``
+     - Polynomial integration degree for finite-element assembly. Defaults to five.
 
 Returns: the initial mesh stored in ``mesh_data``.
 
@@ -600,6 +602,47 @@ Solve and return modes with separate algebraic and adaptive controls.
      - Relative discretization-residual stopping threshold.
 
 Returns: the physics-specific result stored in ``result``.
+
+``PeriodicModeSolver2D.sweep``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    PeriodicModeSolver2D.sweep(*, frequencies, max_refinements=2, adaptive_tolerance=0.05, **solve_options)
+
+Yield mode sets in increasing frequency order, adapting only at the highest frequency.
+
+.. list-table:: Arguments
+   :header-rows: 1
+   :widths: 16 20 12 16 36
+
+   * - Argument
+     - Type / units
+     - Required / optional
+     - Default
+     - Meaning
+   * - ``frequencies``
+     - ``array-like or scalar``
+     - Required
+     - ``—``
+     - Strictly increasing positive frequencies in hertz.
+   * - ``max_refinements``
+     - ``int``
+     - Optional
+     - ``2``
+     - Maximum mesh refinements after the initial solve; zero means one solve.
+   * - ``adaptive_tolerance``
+     - ``float``
+     - Optional
+     - ``0.05``
+     - Relative discretization-residual stopping threshold.
+   * - ``solve_options``
+     - ``array-like or scalar``
+     - Optional
+     - ``—``
+     - Additional keyword arguments accepted by this solver's solve method.
+
+Returns: an iterator of mode sets in increasing frequency order.
 
 ``PeriodicModeSolver2D.show``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -986,7 +1029,9 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
 
 .. code-block:: python
 
-    PeriodicModeSolver3D.add_pml(*, thickness: 'float', order: 'int' = 3, sigma_max: 'float' = 5.0, direction: 'str' = 'all') -> 'object'
+    PeriodicModeSolver3D.add_pml(*, thickness: "float | Literal['auto']" = 'auto', order: 'int' = 3, sigma_max: 'float' = 5.0, direction: 'str' = 'all') -> 'PMLSpec'
+
+Add a polynomial PML on selected exterior sides. Auto thickness is one third wavelength.
 
 .. list-table:: Arguments
    :header-rows: 1
@@ -998,10 +1043,10 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
      - Default
      - Meaning
    * - ``thickness``
-     - ``float``
-     - Required
-     - ``—``
-     - PML thickness in metres, at each selected exterior end.
+     - ``float | Literal['auto']``
+     - Optional
+     - ``'auto'``
+     - Thickness in metres inside each selected outer face. Auto uses one third of the free-space wavelength.
    * - ``order``
      - ``int``
      - Optional
@@ -1075,7 +1120,7 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
 
 .. code-block:: python
 
-    PeriodicModeSolver3D.mesh(*, max_element_size: 'float | None' = None, wavelength_elements: 'int' = 4, material_aware: 'bool' = True, quadrature_order: 'int' = 3)
+    PeriodicModeSolver3D.mesh(*, max_element_size: 'float | None' = None, wavelength_elements: 'int' = 4, material_aware: 'bool' = True, element_order: 'int' = 2, quadrature_order: 'int' = 5)
 
 Build the initial mesh; solve() may subsequently refine it.
 
@@ -1103,11 +1148,16 @@ Build the initial mesh; solve() may subsequently refine it.
      - Optional
      - ``True``
      - Use material-dependent initial mesh sizing.
+   * - ``element_order``
+     - ``int``
+     - Optional
+     - ``2``
+     - Finite-element polynomial order supported by this backend.
    * - ``quadrature_order``
      - ``int``
      - Optional
-     - ``3``
-     - Element integration order.
+     - ``5``
+     - Polynomial integration degree for finite-element assembly. Defaults to five.
 
 Returns: the initial mesh stored in ``mesh_data``.
 
@@ -1211,6 +1261,47 @@ Solve and return modes with separate algebraic and adaptive controls.
      - Relative discretization-residual stopping threshold.
 
 Returns: the physics-specific result stored in ``result``.
+
+``PeriodicModeSolver3D.sweep``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    PeriodicModeSolver3D.sweep(*, frequencies, max_refinements=2, adaptive_tolerance=0.05, **solve_options)
+
+Yield mode sets in increasing frequency order, adapting only at the highest frequency.
+
+.. list-table:: Arguments
+   :header-rows: 1
+   :widths: 16 20 12 16 36
+
+   * - Argument
+     - Type / units
+     - Required / optional
+     - Default
+     - Meaning
+   * - ``frequencies``
+     - ``array-like or scalar``
+     - Required
+     - ``—``
+     - Strictly increasing positive frequencies in hertz.
+   * - ``max_refinements``
+     - ``int``
+     - Optional
+     - ``2``
+     - Maximum mesh refinements after the initial solve; zero means one solve.
+   * - ``adaptive_tolerance``
+     - ``float``
+     - Optional
+     - ``0.05``
+     - Relative discretization-residual stopping threshold.
+   * - ``solve_options``
+     - ``array-like or scalar``
+     - Optional
+     - ``—``
+     - Additional keyword arguments accepted by this solver's solve method.
+
+Returns: an iterator of mode sets in increasing frequency order.
 
 ``PeriodicModeSolver3D.show``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

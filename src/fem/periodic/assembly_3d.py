@@ -6,12 +6,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeAlias
 
+from fem.common.discretization import DEFAULT_QUADRATURE_ORDER
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy.sparse import bmat, csc_matrix, csr_matrix, eye
 from scipy.sparse.linalg import norm as sparse_norm
 from skfem import Basis, BilinearForm, MeshTet, asm
-from skfem.element import ElementTetN1, ElementTetP1
+from skfem.element import ElementTetP1, ElementTetP2
+from fem.common.tet_hcurl import tetrahedral_element
 from skfem.helpers import dot
 
 from .exceptions import ConfigurationError
@@ -20,6 +22,7 @@ from .periodic import (
     PeriodicProlongation,
     build_node_prolongation,
     build_signed_edge_prolongation,
+    trace_dof_pairs,
 )
 
 
@@ -189,7 +192,7 @@ def assemble_periodic_system_3d(
     frequency: float,
     k0: float,
     material_at: MaterialEvaluator3D,
-    quadrature_order: int = 3,
+    quadrature_order: int = DEFAULT_QUADRATURE_ORDER,
 ) -> PeriodicFEMSystem3D:
     """Assemble and periodically reduce the electric-field QEP."""
 
@@ -205,7 +208,7 @@ def assemble_periodic_system_3d(
     physical_mesh = mesh_data.mesh
     computational_mesh = physical_mesh.scaled(float(k0))
     basis = Basis(
-        computational_mesh, ElementTetN1(), intorder=int(quadrature_order)
+        computational_mesh, tetrahedral_element(mesh_data.info.element_order), intorder=int(quadrature_order)
     )
     coordinates = basis.global_coordinates()
     epsilon, mu = evaluate_material_3d(
@@ -235,13 +238,14 @@ def assemble_periodic_system_3d(
         else np.empty(0, dtype=np.int64)
     )
     node_pairs = np.asarray(mesh_data.periodic_node_pairs, dtype=np.int64)
-    prolongation = build_signed_edge_prolongation(
-        physical_mesh.edges,
-        node_pairs[:, 0],
-        node_pairs[:, 1],
-        node_count=physical_mesh.nvertices,
-        constrained_edges=constrained_edges,
-    )
+    if mesh_data.info.element_order == 2:
+        prolongation = build_node_prolongation(
+            basis.N, *trace_dof_pairs(basis, *node_pairs.T), constrained_nodes=constrained_edges)
+    else:
+        prolongation = build_signed_edge_prolongation(
+            physical_mesh.edges, *node_pairs.T,
+            node_count=physical_mesh.nvertices, constrained_edges=constrained_edges,
+        )
     reduced = tuple(
         prolongation.reduce_matrix(matrix).tocsr() for matrix in full_matrices
     )
@@ -249,7 +253,7 @@ def assemble_periodic_system_3d(
         raise ConfigurationError("Periodic/PEC constraints leave too few edge DOFs.")
 
     scalar_basis = Basis(
-        computational_mesh, ElementTetP1(), intorder=int(quadrature_order)
+        computational_mesh, ElementTetP2() if mesh_data.info.element_order == 2 else ElementTetP1(), intorder=int(quadrature_order)
     )
     scalar_coordinates = scalar_basis.global_coordinates()
     gauss_epsilon, _ = evaluate_material_3d(
@@ -282,15 +286,14 @@ def assemble_periodic_system_3d(
         for name, facets in mesh_data.boundary_facets.items()
     ) else np.empty(0, dtype=np.int64)
     constrained_scalar_nodes = (
-        np.unique(physical_mesh.facets[:, nonperiodic_facets])
+        scalar_basis.get_dofs(facets=nonperiodic_facets).all()
         if nonperiodic_facets.size
         else np.empty(0, dtype=np.int64)
     )
+    scalar_pairs = trace_dof_pairs(scalar_basis, *node_pairs.T)
     try:
         scalar_prolongation = build_node_prolongation(
-            physical_mesh.nvertices,
-            node_pairs[:, 0],
-            node_pairs[:, 1],
+            scalar_basis.N, *scalar_pairs,
             constrained_nodes=constrained_scalar_nodes,
         )
     except ConfigurationError:
@@ -298,9 +301,7 @@ def assemble_periodic_system_3d(
         # scalar test DOF.  Retain the periodic space; convergence fixtures use
         # meshes with interior nodes and therefore exercise the strict test.
         scalar_prolongation = build_node_prolongation(
-            physical_mesh.nvertices,
-            node_pairs[:, 0],
-            node_pairs[:, 1],
+            scalar_basis.N, *scalar_pairs,
         )
     gauss0 = (
         scalar_prolongation.matrix.getH()

@@ -91,7 +91,7 @@ def test_bounds_reject_invalid_values(value):
         (ModeSolver2D, dict(x_range=0.02, y_range=0.01)),
         (PeriodicModeSolver2D, dict(x_range=0.02, z_range=0.01)),
         (PeriodicModeSolver3D, dict(x_range=0.02, y_range=0.01, z_range=0.01)),
-        (ScatteringSolver2D, dict(x_range=0.02, z_range=0.01)),
+        (ScatteringSolver2D, dict(x_range=0.02, y_range=0.01)),
     ],
 )
 @pytest.mark.parametrize("frequency", ["1e9", True, np.array(1e9), 1e9 + 0j, np.inf])

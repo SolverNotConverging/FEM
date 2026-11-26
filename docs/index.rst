@@ -34,8 +34,10 @@ Finite-element electromagnetic solvers with one workflow for every problem type:
      - Guided modes of a z-invariant slab or cross-section
    * - ``fem.PeriodicModeSolver2D``, ``fem.PeriodicModeSolver3D``
      - Complex Bloch modes of a structure periodic along z (leaky-wave antennas)
-   * - ``fem.ScatteringSolver2D``
-     - S-parameters, fields and radiation of 2D waveguide discontinuities
+   * - ``fem.ScatteringSolver2D``, ``fem.ScatteringSolver3D``
+     - Plane-wave scattering fields and bistatic RCS for 2D TE/TM and 3D targets
+   * - ``fem.AntennaSolver3D``
+     - Numerical waveguide and discrete feeds, active S-parameters and radiation patterns
 
 .. toctree::
    :maxdepth: 2
@@ -55,7 +57,9 @@ Finite-element electromagnetic solvers with one workflow for every problem type:
    solvers/electrostatics
    solvers/waveguide
    solvers/periodic
+   solvers/image_line_pilot
    solvers/scattering
+   solvers/antenna
 
 .. toctree::
    :maxdepth: 1
@@ -66,5 +70,6 @@ Finite-element electromagnetic solvers with one workflow for every problem type:
    api/waveguide
    api/periodic
    api/scattering
+   api/antenna
    api/adaptivity
    changelog

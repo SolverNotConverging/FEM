@@ -5,7 +5,7 @@ The public phasor convention is
 ``E(x, z, t) = Re{E(x) exp(+1j*omega*t - 1j*beta*z)}``.
 
 For an x-stratified guide the Maxwell eigenproblem separates into scalar TE
-(``E_y``) and TM (``H_y``) problems.  Both use continuous, first-order line
+(``E_y``) and TM (``H_y``) problems.  Both use continuous Lagrange line
 elements on a mesh which conforms to every material, boundary, and PML
 interface.  The two spectra are merged before the requested modes are
 returned, so ``num_modes`` means the total number of modes rather than a
@@ -20,11 +20,12 @@ from fem.common.validation import positive_real as _finite_positive
 from fem.common import materials
 from .scene import WaveguideScene1D
 
-from fem.common.contracts import ElectromagneticSolverMixin
+from fem.common.modal_sweep import ModalSolverMixin
 
 from dataclasses import dataclass
 from typing import Literal, Sequence
 
+from fem.common.discretization import DEFAULT_QUADRATURE_ORDER
 import numpy as np
 from numpy.typing import NDArray
 from scipy import linalg
@@ -92,7 +93,7 @@ def _passive_material(material: DiagonalMaterial, context: str) -> None:
         raise ConfigurationError("epsilon entries must be nonzero in the 1D FEM backend.")
 
 
-class ModeSolver1D(WaveguideScene1D, ElectromagneticSolverMixin):
+class ModeSolver1D(WaveguideScene1D, ModalSolverMixin):
     """FEM-native mode solver for an x-stratified cross-section.
 
     Geometry is recorded continuously by the ``add_*`` methods.  Call
@@ -106,6 +107,8 @@ class ModeSolver1D(WaveguideScene1D, ElectromagneticSolverMixin):
         Either a positive physical width (domain ``0..width``) or an explicit
         ``(minimum, maximum)`` pair in metres.
     """
+
+    _pml_axes = "x"
 
     def __init__(self, *, frequency: float, x_range: float | Sequence[float], background_material: materials.Material=materials.vacuum) -> None:
         self._init_scene(background_material=background_material)
@@ -123,7 +126,7 @@ class ModeSolver1D(WaveguideScene1D, ElectromagneticSolverMixin):
 
         self.mesh_data: FEMMesh1D | None = None
         self._result: ModeSet | None = None
-        self._quadrature_order = 4
+        self._quadrature_order = DEFAULT_QUADRATURE_ORDER
         self._discretization_settings: dict[str, object] | None = None
         self._clear_result_views()
         self.geometry.add_change_listener(self._geometry_changed)
@@ -232,22 +235,6 @@ class ModeSolver1D(WaveguideScene1D, ElectromagneticSolverMixin):
         self._geometry_changed()
         return handle
 
-    def add_pml(self, *, thickness: float, order: int=3, sigma_max: float=5.0, direction: str='all') -> PMLSpec:
-        """Place a physical transformation-optics PML at selected x ends."""
-
-        canonical = str(direction).lower()
-        aliases = {"both": "all", "left": "x-", "right": "x+"}
-        canonical = aliases.get(canonical, canonical)
-        if canonical not in {"all", "x", "x-", "x+"}:
-            raise ConfigurationError("1D PML direction must be 'all', 'x', 'x-', or 'x+'.")
-        spec = PMLSpec(float(thickness), int(order), float(sigma_max), canonical)
-        width = self.x_span[1] - self.x_span[0]
-        occupied = 2.0 * spec.thickness if canonical in {"all", "x"} else spec.thickness
-        if occupied >= width:
-            raise ConfigurationError("The requested PML leaves no non-PML domain interior.")
-        self.geometry.add_pml(spec)
-        self._geometry_changed()
-        return spec
 
 
     def _set_outer_boundary_impl(self, *, kind: str) -> None:
@@ -293,10 +280,10 @@ class ModeSolver1D(WaveguideScene1D, ElectromagneticSolverMixin):
         resolution: int | None = None,
         wavelength_elements: int = 4,
         material_aware: bool = True,
-        element_order: int = 1,
-        quadrature_order: int = 4,
+        element_order: int = 2,
+        quadrature_order: int = DEFAULT_QUADRATURE_ORDER,
     ) -> FEMMesh1D:
-        """Create an interface-conforming first-order line mesh.
+        """Create an interface-conforming line mesh.
 
         By default, element density follows the local material wavenumber:
         intervals with a larger conservative material-index estimate receive
@@ -306,7 +293,7 @@ class ModeSolver1D(WaveguideScene1D, ElectromagneticSolverMixin):
         """
 
         quadrature = _positive_integer(
-            quadrature_order, "quadrature_order", minimum=2
+            quadrature_order, "quadrature_order", minimum=2 * _positive_integer(element_order, "element_order")
         )
         wavelength_count = _positive_integer(
             wavelength_elements, "wavelength_elements", minimum=4
@@ -334,6 +321,10 @@ class ModeSolver1D(WaveguideScene1D, ElectromagneticSolverMixin):
         }
         self._clear_result_views()
         return mesh
+
+    def _reassemble_frequency(self):
+        # The line solver assembles its operators inside each eigensolve.
+        self._clear_result_views()
 
     def refine(self, factor: float = 2.0) -> FEMMesh1D:
         """Remesh the current geometry with ``factor`` times the density.
@@ -436,8 +427,15 @@ class ModeSolver1D(WaveguideScene1D, ElectromagneticSolverMixin):
         points, weights = np.polynomial.legendre.leggauss(
             (self._quadrature_order + 2) // 2
         )
-        shapes = np.stack(((1.0 - points) / 2.0, (1.0 + points) / 2.0))
-        coordinates = nodes[:-1, None] + np.diff(nodes)[:, None] * shapes[1]
+        t = (points + 1) / 2
+        quadratic = mesh.info.element_order == 2
+        if quadratic:
+            shapes = np.stack(((1 - t) * (1 - 2*t), t * (2*t - 1), 4*t*(1 - t)))
+            derivatives = np.stack((4*t - 3, 4*t - 1, 4 - 8*t))
+        else:
+            shapes = np.stack((1 - t, t))
+            derivatives = np.stack((-np.ones_like(t), np.ones_like(t)))
+        coordinates = nodes[:-1, None] + np.diff(nodes)[:, None] * t
         eps, mu = self._transformed_material_at(coordinates)
         if np.any(np.abs(eps) <= np.finfo(float).tiny) or np.any(
             np.abs(mu) <= np.finfo(float).tiny
@@ -452,11 +450,14 @@ class ModeSolver1D(WaveguideScene1D, ElectromagneticSolverMixin):
         active_nodes[active_indices + 1] = True
 
         dofs = np.column_stack((active_indices, active_indices + 1))
-        rows = np.repeat(dofs, 2, axis=1).ravel()
-        columns = np.tile(dofs, (1, 2)).ravel()
+        if quadratic:
+            dofs = np.column_stack((dofs, nodes.size + active_indices))
+            active_nodes = np.concatenate((active_nodes, active_elements))
+        rows = np.repeat(dofs, dofs.shape[1], axis=1).ravel()
+        columns = np.tile(dofs, (1, dofs.shape[1])).ravel()
         h = widths_xi[active_indices]
         mass_weights = np.einsum("q,iq,jq->qij", weights / 2.0, shapes, shapes)
-        gradient_product = np.asarray(((1.0, -1.0), (-1.0, 1.0)))
+        gradient_weights = np.einsum("q,iq,jq->qij", weights / 2, derivatives, derivatives)
 
         systems: list[_PolarizationSystem] = []
         for polarization in ("TE", "TM"):
@@ -478,19 +479,19 @@ class ModeSolver1D(WaveguideScene1D, ElectromagneticSolverMixin):
             local_a = h[:, None, None] * np.einsum(
                 "eq,qij->eij", mass_a[active_indices], mass_weights
             )
-            local_a -= (
-                (stiffness[active_indices] @ (weights / 2.0)) / h
-            )[:, None, None] * gradient_product
+            local_a -= np.einsum("eq,qij->eij", stiffness[active_indices], gradient_weights) / h[:, None, None]
             local_b = h[:, None, None] * np.einsum(
                 "eq,qij->eij", mass_b[active_indices], mass_weights
             )
 
+            if quadratic:
+                constrained = np.pad(constrained, (0, len(active_elements)))
             free = np.flatnonzero(active_nodes & ~constrained).astype(np.int64)
             if free.size < 2:
                 raise SolverError(
                     f"The {polarization} problem has fewer than two unconstrained nodal DOFs."
                 )
-            shape = (nodes.size, nodes.size)
+            shape = (len(active_nodes), len(active_nodes))
             full_a = coo_matrix((local_a.ravel(), (rows, columns)), shape=shape).tocsr()
             full_b = coo_matrix((local_b.ravel(), (rows, columns)), shape=shape).tocsr()
             systems.append(
@@ -663,9 +664,11 @@ class ModeSolver1D(WaveguideScene1D, ElectromagneticSolverMixin):
             np.max(np.abs(eps_physical * mu_physical), axis=0)
         )
 
-        nodal = np.zeros(nodes.size, dtype=np.complex128)
-        nodal[system.free_nodes] = candidate.vector
-        primary = 0.5 * (nodal[:-1] + nodal[1:])
+        quadratic = mesh.info.element_order == 2
+        coefficients = np.zeros(nodes.size + (len(widths) if quadratic else 0), dtype=np.complex128)
+        coefficients[system.free_nodes] = candidate.vector
+        nodal = coefficients[:nodes.size]
+        primary = coefficients[nodes.size:].copy() if quadratic else 0.5 * (nodal[:-1] + nodal[1:])
         derivative = np.diff(nodal) / widths
         primary[~system.active_elements] = 0.0
         derivative[~system.active_elements] = 0.0
@@ -686,14 +689,28 @@ class ModeSolver1D(WaveguideScene1D, ElectromagneticSolverMixin):
             longitudinal_flux = ex * np.conj(hy)
 
         physical_cells = system.active_elements & self._non_pml_elements(centres)
+        primary_density = np.abs(primary)**2
         complex_power = 0.5 * np.sum(widths[physical_cells] * longitudinal_flux[physical_cells])
+        if quadratic:
+            xi, weights = np.polynomial.legendre.leggauss((self._quadrature_order + 2) // 2)
+            x = centres[:, None] + widths[:, None] * xi / 2
+            eq, mq = self._transformed_material_at(x)
+            # Evaluate the quadratic primary and transverse power at Gauss points.
+            uq = (primary[:, None] * (1 - xi**2) + nodal[:-1, None] * xi*(xi - 1)/2
+                  + nodal[1:, None] * xi*(xi + 1)/2)
+            magnitude = abs(uq)**2
+            primary_density = magnitude @ (weights / 2)
+            admittance = (np.conj(beta / (self.omega * MU_0 * mq[0])) if candidate.polarization == "TE"
+                          else beta / (self.omega * EPSILON_0 * eq[0]))
+            flux_integral = (magnitude * admittance) @ (weights / 2)
+            complex_power = .5 * np.sum(widths[physical_cells] * flux_integral[physical_cells])
         real_power = float(np.real(complex_power))
         power_scale = max(float(np.max(np.abs(primary))), np.finfo(float).tiny)
         if real_power > 1e-12 * power_scale**2 * max(self.x_range[1] - self.x_range[0], np.finfo(float).tiny):
             scale = 1.0 / np.sqrt(real_power)
             normalization = "unit-power"
         else:
-            norm = float(np.sqrt(np.sum(widths[system.active_elements] * np.abs(primary[system.active_elements]) ** 2)))
+            norm = float(np.sqrt(np.sum(widths[system.active_elements] * primary_density[system.active_elements])))
             if norm <= np.finfo(float).tiny:
                 raise SolverError("An eigenvector has zero physical norm.")
             scale = 1.0 / norm
@@ -739,6 +756,7 @@ class ModeSolver1D(WaveguideScene1D, ElectromagneticSolverMixin):
             divergence_residual=0.0 if candidate.polarization == "TE" else None,
             metadata={
                 "nodal_primary": np.asarray(nodal * factor),
+                "midpoint_primary": np.asarray(primary * factor),
                 "attenuation": float(-np.imag(beta)),
                 "complex_power_before_normalization": complex(complex_power),
             },
@@ -888,7 +906,7 @@ class ModeSolver1D(WaveguideScene1D, ElectromagneticSolverMixin):
             )
         return solution
 
-    def mesh(self, *, max_element_size: float | None=None, resolution: int | None=None, wavelength_elements: int=4, material_aware: bool=True, element_order: int=1, quadrature_order: int=4):
+    def mesh(self, *, max_element_size: float | None=None, resolution: int | None=None, wavelength_elements: int=4, material_aware: bool=True, element_order: int=2, quadrature_order: int=DEFAULT_QUADRATURE_ORDER):
         """Build the initial mesh; solve() may subsequently refine it."""
         settings = {'max_element_size': max_element_size, 'resolution': resolution, 'wavelength_elements': wavelength_elements, 'material_aware': material_aware, 'element_order': element_order, 'quadrature_order': quadrature_order}
         mesh = self._mesh_impl(**settings)

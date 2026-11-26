@@ -2,7 +2,6 @@
 from pathlib import Path
 
 import numpy as np
-from tqdm.auto import tqdm
 import fem
 
 OUTPUT = Path(__file__).parent / "outputs" / Path(__file__).stem
@@ -10,10 +9,9 @@ OUTPUT.mkdir(parents=True, exist_ok=True)
 
 frequencies = np.linspace(200e6, 400e6, 21)
 neff_sweep = []
-for case, frequency in enumerate(tqdm(frequencies, desc="Frequency sweep", unit="frequency"), start=1):
-    solver = fem.ModeSolver1D(frequency=frequency, x_range=1e0)
-    solver.mesh(resolution=48)
-    modes = solver.solve(backend="auto", max_refinements=0, num_modes=3)
+solver = fem.ModeSolver1D(frequency=frequencies[-1], x_range=1e0)
+cases = solver.sweep(frequencies=frequencies, max_refinements=2, backend="auto", num_modes=3)
+for case, modes in enumerate(cases, start=1):
     modes.save(OUTPUT / f"case_{case:03d}.h5")
     neff_sweep.append(modes.neff)
 

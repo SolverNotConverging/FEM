@@ -8,11 +8,12 @@ from fem.common.validation import finite_complex as _finite_complex
 from fem.common import materials
 from .scene import PeriodicScene3D
 
-from fem.common.contracts import ElectromagneticSolverMixin
+from fem.common.modal_sweep import ModalSolverMixin
 
 from dataclasses import asdict
 from typing import Any, Literal
 
+from fem.common.discretization import DEFAULT_QUADRATURE_ORDER, field_orders
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy import linalg
@@ -34,7 +35,6 @@ from .geometry import (
     Box,
     Cylinder,
     GeometryModel3D,
-    PMLSpec,
     Shape3D,
     Sphere,
 )
@@ -93,8 +93,10 @@ def _sparse_candidates(system, target, count, tolerance, backend, ncv=None,
     return values, vectors, residuals, method
 
 
-class PeriodicModeSolver3D(PeriodicScene3D, ElectromagneticSolverMixin):
+class PeriodicModeSolver3D(PeriodicScene3D, ModalSolverMixin):
     """Solve complex fixed-frequency Bloch propagation in a tetrahedral cell."""
+
+    _pml_axes = "xy"
 
     def __init__(self, *, frequency: float, x_range: float | tuple[float, float], y_range: float | tuple[float, float], z_range: float | tuple[float, float], background_material: materials.Material=materials.vacuum, boundary: materials.IdealBoundary=materials.PEC) -> None:
         self._init_scene(background_material=background_material)
@@ -165,10 +167,6 @@ class PeriodicModeSolver3D(PeriodicScene3D, ElectromagneticSolverMixin):
     def _add_pmc_impl(self, *, shape: Shape3D, name: str | None=None) -> object:
         return self.geometry.add_boundary(shape, "pmc", name=name)
 
-    def add_pml(self, *, thickness: float, order: int=3, sigma_max: float=5.0, direction: str='all') -> object:
-        return self.geometry.add_pml(
-            PMLSpec(float(thickness), int(order), float(sigma_max), str(direction))
-        )
 
 
     def add_mesh_refinement(self, *, shape: Shape3D, max_element_size: float, name: str | None=None) -> object:
@@ -188,13 +186,15 @@ class PeriodicModeSolver3D(PeriodicScene3D, ElectromagneticSolverMixin):
         max_element_size: float | None = None,
         wavelength_elements: int = 4,
         material_aware: bool = True,
-        quadrature_order: int = 3,
+        element_order: int = 2,
+        quadrature_order: int = DEFAULT_QUADRATURE_ORDER,
     ) -> PeriodicMesh3D:
-        quadrature_order = _positive_integer(quadrature_order, "quadrature_order", 2)
+        element_order, quadrature_order = field_orders(element_order, quadrature_order, (1, 2))
         options = {
             "max_element_size": max_element_size,
             "wavelength_elements": wavelength_elements,
             "material_aware": material_aware,
+            "element_order": element_order,
             "quadrature_order": quadrature_order,
         }
         mesh_data = discretize_3d(
@@ -202,16 +202,11 @@ class PeriodicModeSolver3D(PeriodicScene3D, ElectromagneticSolverMixin):
             max_element_size=max_element_size,
             wavelength_elements=wavelength_elements,
             material_aware=material_aware,
+            element_order=element_order,
             k0=self.k0,
             _refinement_scale=self._refinement_scale,
         )
-        system = assemble_periodic_system_3d(
-            mesh_data,
-            frequency=self.frequency,
-            k0=self.k0,
-            material_at=self.geometry.transformed_material_at,
-            quadrature_order=quadrature_order,
-        )
+        system = self._assemble_mesh(mesh_data, quadrature_order)
         self.mesh_data = mesh_data
         self.native_mesh = mesh_data.mesh
         self.system = system
@@ -221,6 +216,20 @@ class PeriodicModeSolver3D(PeriodicScene3D, ElectromagneticSolverMixin):
         self._discretized_revision = self.geometry.revision
         self._discretize_options = options
         return mesh_data
+
+    def _reassemble_frequency(self):
+        self.system = self._assemble_mesh(self.mesh_data, self.system.quadrature_order)
+        self._gpu_resident_session = None
+        self._gpu_resident_estimate = None
+
+    def _assemble_mesh(self, mesh_data, quadrature_order):
+        return assemble_periodic_system_3d(
+            mesh_data,
+            frequency=self.frequency,
+            k0=self.k0,
+            material_at=self.geometry.transformed_material_at,
+            quadrature_order=quadrature_order,
+        )
 
     def refine(self, factor: float = 2.0) -> PeriodicMesh3D:
         selected = _positive_real(factor, "factor")
@@ -592,6 +601,7 @@ class PeriodicModeSolver3D(PeriodicScene3D, ElectromagneticSolverMixin):
                 "neff_guess": target,
                 "requested_direction": direction,
                 "mesh": asdict(self.mesh_data.info),
+                "element_order": self.mesh_data.info.element_order,
                 "mesh_element_tags": self.mesh_data.element_tags,
                 "periodic_node_pairs": self.mesh_data.periodic_node_pairs,
                 "periodic_edge_pairs": self.mesh_data.periodic_edge_pairs,
@@ -618,9 +628,9 @@ class PeriodicModeSolver3D(PeriodicScene3D, ElectromagneticSolverMixin):
     def result(self):
         return self._result
 
-    def mesh(self, *, max_element_size: float | None=None, wavelength_elements: int=4, material_aware: bool=True, quadrature_order: int=3):
+    def mesh(self, *, max_element_size: float | None=None, wavelength_elements: int=4, material_aware: bool=True, element_order: int=2, quadrature_order: int=DEFAULT_QUADRATURE_ORDER):
         """Build the initial mesh; solve() may subsequently refine it."""
-        settings = {'max_element_size': max_element_size, 'wavelength_elements': wavelength_elements, 'material_aware': material_aware, 'quadrature_order': quadrature_order}
+        settings = {'max_element_size': max_element_size, 'wavelength_elements': wavelength_elements, 'material_aware': material_aware, 'element_order': element_order, 'quadrature_order': quadrature_order}
         mesh = self._mesh_impl(**settings)
         self._mesh_settings = settings
         self._result = None

@@ -22,7 +22,6 @@ solver.add_box(name="periodic_metal_patch", x_range=(-2 * MM, 2 * MM), y_range=(
                z_range=(3.5 * MM, 6.5 * MM), material=fem.materials.PEC)
 # PML occupies the outer 3 mm on x-/x+/y-/y+; it never covers z.
 solver.add_pml(thickness=3 * MM, direction="all")
-solver.mesh(max_element_size=3 * MM, wavelength_elements=6)
 
 modes = solver.solve(
     backend="auto",
@@ -30,7 +29,7 @@ modes = solver.solve(
     neff_guess=0.5 - 0.02j,  # a fast-wave branch inside the air light cone
     eigensolver_tolerance=1e-8,
     ncv=80,  # enough radiation candidates for sparse shift-invert
-    max_refinements=0,
+    max_refinements=2,
 )
 print("neff:", modes.neff)
 print("PML energy fractions:", [mode.pml_fraction for mode in modes])

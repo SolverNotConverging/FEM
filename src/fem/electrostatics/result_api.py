@@ -44,6 +44,13 @@ def _draw(ax, result, component, quantity, *, colorbar_axes=None):
         ax.set_ylabel("y (m)")
     if component == "potential":
         value, unit, location = result.potential, "V", "node"
+        if getattr(result, "potential_coefficients", None) is not None:
+            from skfem import Basis, ElementLineP2, ElementTriP2, MeshLine, MeshTri
+            line = points.shape[1] == 1
+            native = (MeshLine if line else MeshTri)(points.T, cells.T)
+            basis = Basis(native, ElementLineP2() if line else ElementTriP2())
+            sampled, value = basis.refinterp(result.potential_coefficients, nrefs=1)
+            points, cells = sampled.p.T, sampled.t.T
     elif component == "mesh":
         if points.shape[1] == 1:
             ax.plot(points[:, 0], np.zeros(len(points)), "|-", color="black")
@@ -78,7 +85,8 @@ def _draw(ax, result, component, quantity, *, colorbar_axes=None):
     elif quantity != "real": raise ConfigurationError("Static fields support quantity='real' or 'magnitude'.")
     if points.shape[1] == 1:
         x = points[:, 0] if location == "node" else points[cells, 0].mean(axis=1)
-        ax.plot(x, value)
+        order = np.argsort(x, kind="stable")
+        ax.plot(x[order], value[order])
         ax.set_ylabel(unit)
     else:
         triangle = mtri.Triangulation(points[:, 0], points[:, 1], cells)

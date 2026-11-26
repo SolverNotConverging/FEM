@@ -1,4 +1,16 @@
 {
+  "fem.antenna": {
+    "path": "fem.antenna",
+    "exports": ["AntennaSolver3D", "AntennaResult", "AntennaSweep", "RadiationPattern"],
+    "solvers": {
+      "AntennaSolver3D": ["__init__", "add_geometry", "add_mesh_refinement", "add_pml", "add_nf2ff", "add_waveguide_port", "add_discrete_port", "solve_port_modes", "set_excitation", "mesh", "solve", "sweep", "show"]
+    },
+    "results": {
+      "AntennaResult": ["far_field", "show_port_modes", "plot", "show", "save"],
+      "AntennaSweep": ["plot", "show", "save"]
+    },
+    "documentation": "docs/api"
+  },
   "fem.waveguide": {
     "path": "fem.waveguide",
     "exports": [
@@ -24,6 +36,7 @@
         "refine",
         "mesh",
         "solve",
+        "sweep",
         "show"
       ],
       "ModeSolver2D": [
@@ -41,6 +54,7 @@
         "refine",
         "mesh",
         "solve",
+        "sweep",
         "show"
       ]
     },
@@ -84,6 +98,7 @@
         "refine",
         "mesh",
         "solve",
+        "sweep",
         "show"
       ],
       "PeriodicModeSolver3D": [
@@ -101,6 +116,7 @@
         "refine",
         "mesh",
         "solve",
+        "sweep",
         "show"
       ]
     },
@@ -124,62 +140,40 @@
   "fem.scattering": {
     "path": "fem.scattering",
     "exports": [
-      "ClosedContourFields",
-      "Diagnostic",
-      "DiagnosticReport",
-      "FarFieldResult",
-      "IncidentMode",
-      "LayeredExterior",
-      "MaterialError",
-      "ModeProjectionError",
-      "ModeSolverError",
-      "PortMode",
-      "PortModeSet",
       "ScatteringResult",
       "ScatteringSolver2D",
-      "ScatteringSweepResult",
-      "WaveguideScatteringError"
+      "ScatteringSolver3D"
     ],
     "solvers": {
       "ScatteringSolver2D": [
         "__init__",
         "add_geometry",
-        "add_rectangle",
-        "add_circle",
-        "add_polygon",
-        "add_slot",
-        "set_material",
-        "set_shape",
-        "set_material_field",
-        "set_boundary",
-        "add_pml",
-        "set_monitors",
-        "set_matched_ports",
-        "set_nf2ff_contour",
-        "remove",
+        "add_mesh_refinement",
+          "add_pml",
+          "add_nf2ff",
         "mesh",
-        "solve_modes",
-        "set_incident_mode",
         "solve",
-        "sweep",
+        "show"
+      ],
+      "ScatteringSolver3D": [
+        "__init__",
+        "add_geometry",
+        "add_mesh_refinement",
+          "add_pml",
+          "add_nf2ff",
+        "mesh",
+        "solve",
         "show"
       ]
     },
     "results": {
       "ScatteringResult": [
+        "radar_cross_section",
         "plot",
         "show",
-        "save",
-        "S",
-        "check",
-        "deembed",
-        "far_field"
-      ],
-      "ScatteringSweepResult": [
-        "plot",
-        "show",
-        "save",
-        "S"
+        "export_vtk",
+        "vtk_datasets",
+        "save"
       ]
     },
     "documentation": "docs/api"

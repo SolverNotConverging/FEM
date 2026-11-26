@@ -181,8 +181,8 @@ def discretize_3d(
 
     if not isinstance(geometry, GeometryModel3D):
         raise TypeError("geometry must be a GeometryModel3D instance.")
-    if element_order != 1:
-        raise MeshError("Periodic 3D v1 supports first-order tetrahedra only.")
+    if element_order not in (1, 2):
+        raise MeshError("element_order must be 1 or 2.")
     if isinstance(wavelength_elements, bool) or int(wavelength_elements) != wavelength_elements or wavelength_elements < 4:
         raise MeshError("wavelength_elements must be an integer of at least four.")
     xmin, xmax = geometry.x_span
@@ -246,7 +246,7 @@ def discretize_3d(
             xcuts = {xmin, xmax}
             ycuts = {ymin, ymax}
             for pml in geometry.pmls:
-                sides = geometry._pml_sides(pml.direction)
+                sides = pml.sides("xy")
                 if "x-" in sides:
                     xcuts.add(xmin + pml.thickness)
                 if "x+" in sides:
@@ -620,7 +620,20 @@ def discretize_3d(
                     except Exception:
                         pass
 
-    mesh = MeshTet(points.T, tetrahedra.T)
+    if element_order == 2:
+        # Give corresponding translated faces the same relative vertex ordering.
+        # Both hierarchical face functions then have identical traces at the seam.
+        renumber = np.arange(len(points))
+        slaves, masters = periodic_node_pairs.T
+        renumber[slaves[np.argsort(masters)]] = np.sort(slaves)
+        points = points[np.argsort(renumber)]
+        tetrahedra = renumber[tetrahedra]
+        periodic_node_pairs = renumber[periodic_node_pairs]
+        boundary_node_facets = {
+            name: [tuple(sorted(renumber[list(face)])) for face in group]
+            for name, group in boundary_node_facets.items()
+        }
+    mesh = MeshTet(points.T, tetrahedra.T, sort_t=(element_order == 2))
     edge_nodes = np.asarray(mesh.edges.T, dtype=np.int64)
     edge_pairs = _periodic_edge_pairs(edge_nodes, periodic_node_pairs)
     boundary_indices = np.asarray(mesh.boundary_facets(), dtype=np.int64)
@@ -668,6 +681,7 @@ def discretize_3d(
             minimum_edge=hmin,
             maximum_edge=hmax,
             requested_maximum_edge=maximum,
+            element_order=element_order,
             material_aware=bool(material_aware),
             refinement_regions=len(geometry.refinements),
         ),

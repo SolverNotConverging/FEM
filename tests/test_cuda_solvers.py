@@ -61,84 +61,28 @@ def test_waveguide_cuda(dim, backend, cuda_ritz):
     assert gpu[0].residual < 1e-7
 
 
-@pytest.mark.parametrize("matched_ports", [False, True])
-@pytest.mark.parametrize("backend", ["gpu", "hybrid", "auto"])
-def test_scattering_cuda(matched_ports, backend, cuda_ritz):
-    from fem.common import materials
-    from fem.scattering import ScatteringSolver2D
-    solver = ScatteringSolver2D(frequency=c / 1.55e-6,
-        x_range=(0., 1e-6), z_range=(-3e-6, 3e-6), boundary=materials.PEC)
-    solver.add_rectangle(x_range=solver.x_range, z_range=(-.3e-6, .3e-6),
-        material=materials.Material(epsilon=1.1))
-    if matched_ports:
-        solver.set_matched_ports()
+@pytest.mark.parametrize("polarization", ["TE", "TM", "vector"])
+def test_plane_wave_cudss(polarization):
+    import fem
+    outer = (-1/3, 1 + 1/3)
+    settings = dict(frequency=c, x_range=outer, y_range=outer)
+    if polarization == "vector":
+        solver = fem.ScatteringSolver3D(**settings, z_range=outer, pml_layers=2)
+        target = fem.shapes.Box(bounds=((.3, .7),)*3)
     else:
-        solver.add_pml(thickness=.8e-6, direction="z", target_reflection=1e-7)
-    solver.mesh(max_element_size=.25e-6, wavelength_elements=6)
-    cpu_modes = solver.solve_modes(backend="cpu", num_modes=1, neff_guess=1.,
-        num_elements=32, max_refinements=0)
-    gpu_modes = solver.solve_modes(backend=backend, num_modes=1, neff_guess=1.,
-        num_elements=32, max_refinements=0)
-    np.testing.assert_allclose(gpu_modes[0].neff, cpu_modes[0].neff, rtol=1e-7)
-    assert gpu_modes.solve_info["method"] == ("cudss-shift-invert" if backend == "gpu" else "cudss-hybrid-shift-invert")
-    assert gpu_modes[0].residual < 1e-8
-    # Use identical incident fields to compare the direct solvers independently
-    # of eigenvector phase conventions.
-    solver.set_modes(cpu_modes)
-    solver.set_incident_mode(0, amplitude=1e-13)
+        solver = fem.ScatteringSolver2D(**settings, polarization=polarization)
+        target = fem.shapes.Rectangle(bounds=((.3, .7),)*2)
+    solver.add_geometry(shape=target, material=fem.materials.copper)
+    solver.mesh(max_element_size=.23)
     cpu = solver.solve(backend="cpu", max_refinements=0)
-    gpu = solver.solve(backend=backend, max_refinements=0)
+    gpu = solver.solve(backend="gpu", max_refinements=0)
     assert gpu.solve_info["method"] == "cudss-direct"
-    assert gpu.solve_info["relative_residual"] < 1e-9
-    assert np.linalg.norm(cpu.E_scattered) > 0
-    np.testing.assert_allclose(gpu.E_scattered, cpu.E_scattered, rtol=1e-6, atol=1e-10)
-    np.testing.assert_allclose([gpu.S11, gpu.S21], [cpu.S11, cpu.S21], rtol=1e-7, atol=1e-9)
-    np.testing.assert_allclose([gpu.reflection, gpu.transmission, gpu.power_balance_error],
-        [cpu.reflection, cpu.transmission, cpu.power_balance_error], atol=1e-8)
-
-
-def test_scattering_cuda_sweep(cuda_ritz):
-    from fem.common import materials
-    from fem.scattering import ScatteringSolver2D
-    solver = ScatteringSolver2D(frequency=c / 1.55e-6,
-        x_range=(0., 1e-6), z_range=(-3e-6, 3e-6), boundary=materials.PEC)
-    solver.add_pml(thickness=.8e-6, direction="z")
-    result = solver.sweep([c / 1.55e-6, c / 1.5e-6], backend="gpu",
-        max_refinements=0, mesh_options={"max_element_size": .25e-6},
-        mode_options={"num_modes": 1, "num_elements": 24, "neff_guess": 1.})
-    for point in result.results:
-        assert point.solve_info["method"] == "cudss-direct"
-        assert point.S21 == pytest.approx(1., abs=1e-8)
-
-
-def test_scattering_cuda_prescribed_pec_values():
-    from skfem import MeshTri
-    from fem.scattering.fem import MaxwellParameters, assemble_mixed_system, solve_prescribed_pec
-    mesh = MeshTri.init_tensor(np.linspace(0., 1., 5), np.linspace(0., 1., 5))
-    system = assemble_mixed_system(mesh, MaxwellParameters(k0=1.3))
-    rng = np.random.default_rng(43)
-    exact = rng.standard_normal(system.ndofs) + 1j * rng.standard_normal(system.ndofs)
-    prescribed = np.zeros(system.ndofs, dtype=complex)
-    prescribed[system.pec_dofs] = exact[system.pec_dofs]
-    load = system.matrix @ exact
-    cpu = solve_prescribed_pec(system, load, boundary_values=prescribed, backend="cpu")
-    gpu = solve_prescribed_pec(system, load, boundary_values=prescribed, backend="gpu")
-    np.testing.assert_allclose(gpu.coefficients, exact, rtol=1e-9, atol=1e-10)
-    np.testing.assert_allclose(gpu.coefficients, cpu.coefficients, rtol=1e-9, atol=1e-10)
-    assert gpu.solve_info["relative_residual"] < 1e-10
-
-
-def test_scattering_cuda_oblique_mode_resolution(cuda_ritz):
-    from fem.common import materials
-    from fem.scattering import ScatteringSolver2D
-    solver = ScatteringSolver2D(frequency=c / 1.55e-6, angle=10.,
-        x_range=(0., 1e-6), z_range=(-3e-6, 3e-6), boundary=materials.PEC)
-    solver.solve_modes(backend="gpu", num_modes=1, neff_guess=1.,
-        num_elements=32, max_refinements=0)
-    solver.set_incident_mode(0)
-    assert solver.modes.solve_info["method"] == "cudss-shift-invert"
-    assert solver.modes[0].neff == pytest.approx(np.cos(np.deg2rad(10.)), rel=1e-7)
-    assert solver.modes[0].residual < 1e-8
+    np.testing.assert_allclose(cpu.scattered, gpu.scattered, rtol=1e-7, atol=1e-8)
+    np.testing.assert_allclose(cpu.radar_cross_section(-cpu.direction),
+                               gpu.radar_cross_section(-gpu.direction), rtol=1e-7)
+    if polarization == "vector":
+        np.testing.assert_allclose(cpu.surface_current_vertices, gpu.surface_current_vertices,
+                                   rtol=1e-7, atol=1e-9)
 
 
 @pytest.mark.parametrize("dim", [2, 3])
@@ -153,7 +97,7 @@ def test_periodic_cuda(dim, backend, cuda_ritz):
               else PeriodicModeSolver3D(**options, y_range=.01))
     solver.mesh(max_element_size=.006, wavelength_elements=8)
     cpu = solver.solve(num_modes=1, neff_guess=1.3, max_refinements=0,
-                       eigensolver="dense", backend="cpu")
+                       eigensolver="sparse" if dim == 3 else "dense", backend="cpu")
     gpu = solver.solve(num_modes=1, neff_guess=1.3, max_refinements=0,
                        eigensolver="sparse", backend=backend)
     np.testing.assert_allclose(gpu.neff, cpu.neff, rtol=1e-6, atol=1e-8)
@@ -163,6 +107,40 @@ def test_periodic_cuda(dim, backend, cuda_ritz):
     # implemented GPU power normalization using a phase-invariant field norm.
     assert np.linalg.norm(gpu[0].component("Ey")) == pytest.approx(
         np.linalg.norm(cpu[0].component("Ey")), rel=1e-5)
+
+
+@pytest.mark.parametrize("impedance", [0., .3+.2j])
+@pytest.mark.parametrize("order,half,size,layers,tolerance", [
+    (1, .85 + 1/3, .10, 5, .12),
+    (1, .85, .20, 4, .20),
+    (2, .85, .20, 4, .03),
+])
+def test_metal_sphere_cudss_backscatter_against_mie(impedance, order, half, size, layers, tolerance):
+    from scipy.special import spherical_jn, spherical_yn
+    from fem.common.constants import ETA_0
+    import fem
+
+    radius = .15
+    k = 2*np.pi
+    n = np.arange(1, 10)
+    x = k*radius
+    psi = x*spherical_jn(n, x)
+    dpsi = spherical_jn(n, x) + x*spherical_jn(n, x, derivative=True)
+    xi = psi - 1j*x*spherical_yn(n, x)
+    dxi = dpsi - 1j*(spherical_yn(n, x) + x*spherical_yn(n, x, derivative=True))
+    a = (dpsi - 1j*impedance*psi) / (dxi - 1j*impedance*xi)
+    b = (impedance*dpsi - 1j*psi) / (impedance*dxi - 1j*xi)
+    expected = np.pi/k**2 * abs(np.sum((2*n+1)*(-1)**n*(a-b)))**2
+
+    extent = (-half, half)
+    solver = fem.ScatteringSolver3D(frequency=c, x_range=extent, y_range=extent, z_range=extent,
+                                    pml_layers=layers)
+    material = fem.SurfaceImpedance(impedance=impedance*ETA_0) if impedance else fem.materials.PEC
+    solver.add_geometry(shape=fem.shapes.Sphere(center=(0,0,0), radius=radius), material=material)
+    # Resolve propagation to the vacuum integration surface as well as the sphere.
+    solver.mesh(max_element_size=size, element_order=order)
+    result = solver.solve(backend="gpu", max_refinements=0)
+    assert result.radar_cross_section(-result.direction)[0] == pytest.approx(expected, rel=tolerance)
 
 
 def test_default_backend_uses_available_gpu(cuda_ritz):

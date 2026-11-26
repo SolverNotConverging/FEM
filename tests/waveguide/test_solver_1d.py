@@ -33,7 +33,8 @@ def test_pml_quadrature_converges_to_integrated_weak_form() -> None:
     for order in (2, 12):
         solver._quadrature_order = order
         _, system = solver._assemble_systems()
-        vector = solver.mesh_data.nodes[system.free_nodes]
+        nodes = solver.mesh_data.nodes
+        vector = np.r_[nodes, (nodes[:-1] + nodes[1:]) / 2][system.free_nodes]
         actual = np.array([vector @ (system.A @ vector), vector @ (system.B @ vector)])
         errors.append(np.linalg.norm(actual - expected))
     assert errors[0] > 1e-6

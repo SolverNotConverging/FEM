@@ -117,18 +117,6 @@ class GoodConductor:
 MaterialAssignment = Material | IdealBoundary | SurfaceImpedance | GoodConductor
 
 
-@dataclass(frozen=True, kw_only=True)
-class SpatialMaterial:
-    """Named spatial permittivity callback for supported scattering backends.
-
-    epsilon(x, z) returns relative scalar values; mu is currently fixed at one.
-    Callbacks are evaluated during solving and are not serialized for restart.
-    """
-    name: str
-    epsilon: object
-    def __post_init__(self):
-        if not callable(self.epsilon):
-            raise ConfigurationError('SpatialMaterial.epsilon must be callable.')
 PEC = IdealBoundary(name='PEC', kind='pec')
 PMC = IdealBoundary(name='PMC', kind='pmc')
 vacuum = Material(name='vacuum')
@@ -166,4 +154,4 @@ def bulk_values(material, *, form='diagonal', dimension=3):
     return tuple(values)
 
 
-__all__ = ['Material', 'GoodConductor', 'SurfaceImpedance', 'SpatialMaterial', 'PEC', 'PMC', 'vacuum', 'air', *_RESISTIVITIES]
+__all__ = ['Material', 'GoodConductor', 'SurfaceImpedance', 'PEC', 'PMC', 'vacuum', 'air', *_RESISTIVITIES]

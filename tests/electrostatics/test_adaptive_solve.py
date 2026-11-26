@@ -10,6 +10,26 @@ from fem.common.errors import SolverError
 from fem.electrostatics.solver import EPSILON_0
 
 
+@pytest.mark.parametrize("dimension", [1, 2])
+def test_default_order_reproduces_quadratic_poisson_solution(dimension):
+    solver = ElectrostaticSolver(dim=dimension, x_range=1., y_range=.5 if dimension == 2 else None,
+                                 outer_potential=None)
+    solver.set_potential(geometry="left", potential=0.)
+    solver.set_potential(geometry="right", potential=0.)
+    domain = (shapes.Interval(bounds=(0., 1.)) if dimension == 1 else
+              shapes.Rectangle(bounds=((0., 1.), (0., .5))))
+    solver.add_charge_density(geometry=domain, density=EPSILON_0)
+    solver.mesh(max_element_size=.22)
+    result = solver.solve(backend="cpu")
+    x = result.coordinates[:, 0]
+    np.testing.assert_allclose(result.potential, x*(1 - x)/2, atol=2e-13)
+    np.testing.assert_allclose(result.electric_field[:, 0], x - .5, atol=2e-12)
+    assert len(result.potential_coefficients) > len(x)
+    assert result.adaptive_residual < 1e-10
+    assert len(result.adaptive_history) == 1
+    assert result.energy == pytest.approx(EPSILON_0 * (1 if dimension == 1 else .5) / 24, rel=1e-12, abs=0)
+
+
 @pytest.mark.gmsh
 @pytest.mark.parametrize("dimension", [1, 2])
 def test_default_adaptation_reduces_poisson_field_error(dimension):
@@ -19,7 +39,7 @@ def test_default_adaptation_reduces_poisson_field_error(dimension):
     solver.set_potential(potential=0.0, geometry='right')
     shape = shapes.Interval(bounds=(0.0, 1.0)) if dimension == 1 else shapes.Rectangle(bounds=((0.0, 1.0), (0.0, 0.5)))
     solver.add_charge_density(density=EPSILON_0, geometry=shape)
-    mesh = solver.mesh(max_element_size=0.22, boundary_refinement=None)
+    mesh = solver.mesh(max_element_size=0.22, element_order=1, boundary_refinement=None)
     before = solver.solve(max_refinements=0)
     result = solver.solve()
     assert len(result.elements) > len(mesh.elements)
@@ -57,7 +77,7 @@ def test_exact_dielectric_flux_does_not_trigger_refinement():
 def test_element_budget_preserves_last_usable_mesh():
     solver = ElectrostaticSolver(dim=1, x_range=(0.0, 1.0))
     solver.add_charge_density(density=EPSILON_0, geometry=shapes.Interval(bounds=(0.0, 1.0)))
-    mesh = solver.mesh(max_element_size=0.2)
+    mesh = solver.mesh(max_element_size=0.2, element_order=1)
     result = solver.solve(adaptive_tolerance=1e-6, max_elements=len(mesh.elements))
     assert result.mesh is mesh
     assert result.adaptive_history[-1]["status"] == "element_limit"
@@ -68,7 +88,7 @@ def test_repeated_local_refinement_preserves_parent_materials():
     solver = ElectrostaticSolver(dim=1, x_range=(0.0, 1.0))
     solver.add_geometry(material=materials.Material(epsilon=4.0, mu=1.0), shape=shapes.Interval(bounds=(0.5, 1.0)))
     solver.add_charge_density(density=EPSILON_0, geometry=shapes.Interval(bounds=(0.0, 1.0)))
-    solver.mesh(max_element_size=0.2, material_aware=False, interface_refinement=None, boundary_refinement=None)
+    solver.mesh(max_element_size=0.2, element_order=1, material_aware=False, interface_refinement=None, boundary_refinement=None)
     result = solver.solve(max_refinements=3, adaptive_tolerance=1e-6)
     assert len(result.adaptive_history) == 4
     assert result.adaptive_history[-1]["relative_indicator"] < result.adaptive_history[0]["relative_indicator"]

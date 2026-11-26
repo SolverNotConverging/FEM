@@ -2,7 +2,6 @@
 from pathlib import Path
 
 import numpy as np
-from tqdm.auto import tqdm
 import fem
 
 OUTPUT = Path(__file__).parent / "outputs" / Path(__file__).stem
@@ -12,12 +11,11 @@ cladding = fem.Material(name="silica cladding", epsilon=1.44 ** 2)
 silicon = fem.Material(name="silicon core", epsilon=3.45 ** 2)
 frequencies = np.linspace(180e12, 210e12, 11)
 neff_sweep = []
-for case, frequency in enumerate(tqdm(frequencies, desc="Frequency sweep", unit="frequency"), start=1):
-    solver = fem.ModeSolver1D(frequency=frequency, x_range=(-3e-6, 3e-6),
-                          background_material=cladding)
-    solver.add_layer(x_range=(-250e-9, 250e-9), name="core", material=silicon)
-    solver.mesh(max_element_size=60e-9)
-    modes = solver.solve(backend="auto", max_refinements=0, num_modes=4)
+solver = fem.ModeSolver1D(frequency=frequencies[-1], x_range=(-3e-6, 3e-6),
+                      background_material=cladding)
+solver.add_layer(x_range=(-250e-9, 250e-9), name="core", material=silicon)
+cases = solver.sweep(frequencies=frequencies, max_refinements=2, backend="auto", num_modes=4)
+for case, modes in enumerate(cases, start=1):
     modes.save(OUTPUT / f"case_{case:03d}.h5")
     neff_sweep.append(modes.neff)
 

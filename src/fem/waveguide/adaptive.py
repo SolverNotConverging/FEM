@@ -12,38 +12,45 @@ def estimate_1d(solver, result):
     nodes = solver.mesh_data.nodes
     widths = solver.k0 * np.diff(nodes)
     centers = (nodes[:-1] + nodes[1:]) / 2
-    eps, mu = solver.geometry.transformed_material_at(centers)
+    quadratic = solver.mesh_data.info.element_order == 2
+    points, weights = np.polynomial.legendre.leggauss((solver._quadrature_order + 2) // 2 if quadratic else 1)
+    weights = weights / 2
+    dx = widths[:, None] * points / 2
+    x = centers[:, None] + dx / solver.k0
+    step = np.diff(nodes)[:, None] * 1e-5
+    seam_step = np.minimum(np.diff(nodes)[:-1], np.diff(nodes)[1:]) * 1e-8
+    material = solver.geometry.transformed_material_at
+
+    def coefficients(polarization, coordinates):
+        eps, mu = material(coordinates)
+        if polarization == "TE":
+            return eps[1], 1 / mu[0], 1 / mu[2]
+        return mu[1], 1 / eps[0], 1 / eps[2]
+
     combined = np.zeros(len(widths))
     maximum = 0.0
     for mode in result:
         u = np.asarray(mode.metadata["nodal_primary"])
+        primary = np.asarray(mode.metadata["midpoint_primary"])
         active = np.asarray(mode.fields.metadata["active_elements"], dtype=bool)
-        if mode.polarization == "TE":
-            a, b, stiffness = eps[1], 1 / mu[0], 1 / mu[2]
-        else:
-            a, b, stiffness = mu[1], 1 / eps[0], 1 / eps[2]
-        primary = (u[:-1] + u[1:]) / 2
+        curvature = 4 * (u[:-1] + u[1:] - 2 * primary) / widths**2 if quadratic else np.zeros_like(primary)
         derivative = np.diff(u) / widths
-        flux = stiffness * derivative
-        # Within a PML, include the derivative of its spatially varying
-        # coefficient rather than treating it as elementwise constant.
-        offset = np.diff(nodes) * 1e-5
-        e0, m0 = solver.geometry.transformed_material_at(centers - offset)
-        e1, m1 = solver.geometry.transformed_material_at(centers + offset)
-        s0 = 1 / (m0[2] if mode.polarization == "TE" else e0[2])
-        s1 = 1 / (m1[2] if mode.polarization == "TE" else e1[2])
-        strong = (s1 - s0) / (2 * solver.k0 * offset) * derivative + (a - mode.neff**2 * b) * primary
-        squared = widths**3 * abs(strong)**2 * active
-        # Use one-sided material values at interfaces for physical flux jumps.
-        el, ml = solver.geometry.transformed_material_at(nodes[1:-1] - np.minimum(np.diff(nodes)[:-1], np.diff(nodes)[1:]) * 1e-8)
-        er, mr = solver.geometry.transformed_material_at(nodes[1:-1] + np.minimum(np.diff(nodes)[:-1], np.diff(nodes)[1:]) * 1e-8)
-        sl = 1 / (ml[2] if mode.polarization == "TE" else el[2])
-        sr = 1 / (mr[2] if mode.polarization == "TE" else er[2])
-        jumps = abs(sl * derivative[:-1] - sr * derivative[1:])**2
+        uq = primary[:, None] + derivative[:, None] * dx + curvature[:, None] * dx**2 / 2
+        slope = derivative[:, None] + curvature[:, None] * dx
+        a, b, stiffness = coefficients(mode.polarization, x)
+        # Include the spatial derivative of stretched material coefficients inside a PML.
+        change = coefficients(mode.polarization, x + step)[2] - coefficients(mode.polarization, x - step)[2]
+        residual = stiffness * curvature[:, None] + change / (2 * solver.k0 * step) * slope + (a - mode.neff**2 * b) * uq
+        squared = widths**3 * (abs(residual)**2 @ weights) * active
+        sl = coefficients(mode.polarization, nodes[1:-1] - seam_step)[2]
+        sr = coefficients(mode.polarization, nodes[1:-1] + seam_step)[2]
+        right_slope = derivative + widths * curvature / 2
+        left_slope = derivative - widths * curvature / 2
+        jumps = abs(sl * right_slope[:-1] - sr * left_slope[1:])**2
         jumps *= active[:-1] & active[1:]
         squared[:-1] += widths[:-1] * jumps / 2
         squared[1:] += widths[1:] * jumps / 2
-        scale = float(np.sum(widths * (abs(flux)**2 + abs(b * primary)**2) * active))
+        scale = float(np.sum(widths * ((abs(stiffness * slope)**2 + abs(b * uq)**2) @ weights) * active))
         normalized = squared / max(scale, np.finfo(float).tiny)
         combined = np.maximum(combined, normalized)
         maximum = max(maximum, float(np.sqrt(normalized.sum())))
@@ -91,7 +98,8 @@ def solve_2d(solver, args, options, max_refinements, adaptive_tolerance):
         for index, mode in enumerate(result):
             full = solver.coefficients[:, index]
             fields = lambda basis, coefficient: mixed_mode_fields(basis, full, mode.neff, coefficient)
-            indicator, residual = maxwell_jump_residual(system.basis, fields, material, axes=(0, 1))
+            indicator, residual = maxwell_jump_residual(system.basis, fields, material, axes=(0, 1),
+                                                       quadrature_order=system.quadrature_order)
             combined = np.maximum(combined, indicator / max(indicator.sum(), np.finfo(float).tiny) * residual**2)
             maximum = max(maximum, residual)
         return combined, maximum

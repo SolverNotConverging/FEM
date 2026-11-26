@@ -12,9 +12,7 @@ solver.add_geometry(name='dielectric', material=dielectric, shape=fem.shapes.Int
 solver.set_potential(potential=0.0, name='ground', geometry='left')
 solver.set_potential(potential=10.0, name='drive', geometry='right')
 
-# Potentials are in volts; max_element_size is in metres.
-solver.mesh(max_element_size=0.0004)
-result = solver.solve(backend="auto", max_refinements=0)
+result = solver.solve(backend="auto", max_refinements=2)
 print(f"nodes={len(result.mesh_data.coordinates)}, energy={result.energy:.6e} J/m2")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 result.save(OUTPUT_DIR / "results.h5")

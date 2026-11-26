@@ -1,7 +1,7 @@
 """Compare FEM capacitors and a Poisson problem against exact 1D solutions.
 
 No fringing is present: the 2D capacitor's top/bottom boundaries are insulating.
-The charged problem compares the interpolated P1 field, not only nodal values.
+The charged problem samples the finite-element potential throughout each cell.
 """
 
 from fem.common import Material, shapes
@@ -13,12 +13,13 @@ import numpy as np
 from matplotlib.figure import Figure
 from scipy.constants import epsilon_0
 from scipy.integrate import trapezoid
+from skfem import Basis, ElementLineP1, ElementLineP2
 from fem.electrostatics import ElectrostaticSolver
 
 DEFAULT_OUTPUT = Path(__file__).resolve().parents[2] / 'outputs/benchmarks/analytical/parallel_plate_electrostatics'
 
 
-def compare(levels=(8, 16, 32)):
+def compare(levels=(8, 16, 32), element_order=2):
     length, height, epsilon, voltage = .01, .005, 2., 10.
     dielectric = Material(name="uniform dielectric", epsilon=epsilon)
     density = 1e-6  # Free volume charge in C/m^3.
@@ -28,7 +29,7 @@ def compare(levels=(8, 16, 32)):
             solver = ElectrostaticSolver(dim=dimension, x_range=length, y_range=height if dimension == 2 else None, outer_potential=None, background_material=dielectric)
             solver.set_potential(potential=0.0, name='ground', geometry='left')
             solver.set_potential(potential=voltage, name='drive', geometry='right')
-            solver.mesh(max_element_size=length / level)
+            solver.mesh(max_element_size=length / level, element_order=element_order)
             result = solver.solve(max_refinements=0)
             exact_potential = voltage * result.coordinates[:, 0] / length
             # 1D quantities are per plate area; 2D quantities are per z length.
@@ -48,12 +49,14 @@ def compare(levels=(8, 16, 32)):
 
         solver = ElectrostaticSolver(dim=1, x_range=length, outer_potential=0.0, background_material=dielectric)
         solver.add_charge_density(density=density, geometry=shapes.Interval(bounds=(0.0, length)))
-        solver.mesh(max_element_size=length / level)
+        solver.mesh(max_element_size=length / level, element_order=element_order)
         result = solver.solve(max_refinements=0)
         x = np.linspace(0., length, 4001)
         exact = density * x * (length - x) / (2 * epsilon_0 * epsilon)
-        order = np.argsort(result.coordinates[:, 0])
-        numerical = np.interp(x, result.coordinates[order, 0], result.potential[order])
+        element = ElementLineP2() if element_order == 2 else ElementLineP1()
+        basis = Basis(result.mesh.mesh, element)
+        coefficients = result.potential_coefficients if element_order == 2 else result.potential
+        numerical = basis.interpolator(coefficients)(x[None, :])
         relative_l2 = np.sqrt(trapezoid((numerical - exact)**2, x) / trapezoid(exact**2, x))
         rows.append(dict(
             case='space_charge_1d', cells_across=level, nominal_h_m=length / level,
@@ -69,12 +72,13 @@ def compare(levels=(8, 16, 32)):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--levels', type=int, nargs='+', default=[8, 16, 32])
+    parser.add_argument('--element-order', type=int, choices=(1, 2), default=2)
     parser.add_argument('--output', type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument('--check', action='store_true', help='Check capacitor identities and <1%% charged-potential error at the finest level.')
     args = parser.parse_args()
     if min(args.levels) < 2:
         parser.error('Use at least two cells across the plates.')
-    rows, profiles = compare(sorted(set(args.levels)))
+    rows, profiles = compare(sorted(set(args.levels)), args.element_order)
     args.output.mkdir(parents=True, exist_ok=True)
     for name, data in (('comparison.csv', rows), ('potential.csv', profiles)):
         with (args.output / name).open('w', newline='', encoding='utf-8') as stream:
@@ -89,7 +93,7 @@ def main():
     profile_ax.legend()
     charged = [r for r in rows if r['case'] == 'space_charge_1d']
     error_ax.loglog([r['nominal_h_m'] for r in charged], [r['potential_relative_error'] for r in charged], 'o-')
-    error_ax.set(xlabel='Requested maximum element size (m)', ylabel='Relative L2 potential error', title='Piecewise-linear potential convergence')
+    error_ax.set(xlabel='Requested maximum element size (m)', ylabel='Relative L2 potential error', title=f'Potential error, order {args.element_order}')
     error_ax.grid(True, which='both', alpha=.3)
     figure.tight_layout()
     figure.savefig(args.output / 'comparison.png', dpi=160)

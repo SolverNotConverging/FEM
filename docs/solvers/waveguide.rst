@@ -28,6 +28,13 @@ Scripts that save results write to ``examples/waveguide/outputs/<example>/``.
 Working with the solver
 -----------------------
 
+``add_pml(thickness="auto", order=3, sigma_max=5.0, direction="all")``
+occupies the outer third of a free-space wavelength on each selected side,
+inside the given coordinate ranges. A numeric thickness is in metres.
+Waveguide material may extend directly into the layer. The solver stretches
+the local material tensors there when computing leaky modes.
+
+``ModeSolver1D`` uses quadratic nodal line elements by default.
 ``ModeSolver2D`` uses second-order transverse edge elements and a quadratic
 longitudinal field by default. This improves propagation-constant accuracy
 near cutoff. Pass ``element_order=1`` to ``mesh()`` for a first-order solve.
@@ -56,8 +63,8 @@ elements. The benchmark records budget exhaustion separately from convergence.
 
 1. Construct the solver with keyword arguments and physical lengths in metres.
 2. Add geometry, material properties, and boundary or excitation conditions.
-3. Call ``mesh(...)`` to choose spatial and element resolution.
-4. Call ``solve(...)`` to obtain a typed result; ``max_refinements=0`` uses one fixed mesh.
+3. Optionally call ``mesh(...)`` to specify an initial mesh size or element order.
+4. Call ``solve(...)`` to generate the mesh automatically and adapt it. Set ``max_refinements=0`` for a fixed mesh.
 5. Inspect diagnostics, then call ``show()``, ``plot()``, or ``save(path)`` explicitly.
 
 
@@ -70,8 +77,7 @@ Workflow
 
     solver = fem.ModeSolver2D(frequency=10e9, x_range=22.86e-3,
                               y_range=10.16e-3, boundary=fem.materials.PEC)
-    solver.mesh(max_element_size=1e-3)
-    result = solver.solve(num_modes=4, max_refinements=0)
+    result = solver.solve(num_modes=4, max_refinements=2)
     result.save("modes.h5")
     loaded = fem.load("modes.h5")
     figure = loaded.plot(component="Ey", mode=0)
@@ -81,7 +87,7 @@ Workflow
 Omit ``neff_guess`` to let the solver choose its search target from the
 materials at each frequency. The examples use this automatic default.
 The adaptive defaults are two refinements and a relative tolerance of 0.05.
-The example uses a fixed mesh for reproducibility. Geometry edits invalidate
+The example allows two adaptive refinements. Geometry edits invalidate
 ``mesh_data`` and ``result``; an automatic rebuild reuses explicit mesh settings.
 
 ``show()`` opens the interactive viewer. ``plot()`` returns
@@ -224,8 +230,10 @@ for learning order, output locations, and viewer requirements.
 Frequency sweeps
 ----------------
 
-The ``_dispersion.py`` examples solve each frequency with a ``tqdm`` progress
-bar and display both real and imaginary effective indices after the sweep.
+The ``_dispersion.py`` examples call ``solver.sweep(frequencies=..., num_modes=...)``.
+The highest frequency controls adaptive refinement. The solver reassembles the
+operators on its final physical mesh for each lower frequency. The iterator yields
+mode sets in ascending frequency order for plotting and saving.
 Plot them with ``fem.plot_dispersion``:
 
 .. code-block:: python

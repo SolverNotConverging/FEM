@@ -19,6 +19,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TypeAlias
 
+from fem.common.discretization import DEFAULT_QUADRATURE_ORDER
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy import linalg
@@ -336,7 +337,7 @@ def assemble_mode_system_2d(
     k0: float,
     material_at: MaterialEvaluator,
     boundary: str = "pec",
-    quadrature_order: int = 4,
+    quadrature_order: int = DEFAULT_QUADRATURE_ORDER,
     element_order: int = 1,
     pec_facets: ArrayLike | None = None,
     impedance_boundaries: Sequence[ImpedanceBoundaryInput] | None = None,

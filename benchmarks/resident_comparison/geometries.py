@@ -41,7 +41,9 @@ def iris():
 def siw():
     solver = PeriodicModeSolver3D(frequency=20e9, x_range=(-8.*MM, 8.*MM),
         y_range=(-.8*MM, .8*MM), z_range=(0., 8.*MM),
-        background_material=Material(name="SIW substrate", epsilon=2.2), boundary=materials.PEC)
+        boundary=materials.PEC)
+    add_box(solver, name="SIW substrate", x_range=(-6.4*MM, 6.4*MM),
+        y_range=(-.8*MM, .8*MM), z_range=(0., 8.*MM), material=Material(epsilon=2.2))
     # Via fences join the y PEC ground planes. A pair of larger interior vias
     # loads each cell. Lateral PML absorbs fields beyond the fences.
     for x in (-5., 5.):
@@ -57,7 +59,7 @@ def siw():
 
 
 def perforated_waveguide():
-    solver = PeriodicModeSolver3D(frequency=20e9, x_range=(-17.43*MM, 17.43*MM),
+    solver = PeriodicModeSolver3D(frequency=20e9, x_range=(-21.43*MM, 21.43*MM),
         y_range=(-5.58*MM, 13.58*MM), z_range=(0., 15.*MM), boundary=materials.PEC)
     # PEC body with a WR-90 air cavity and an off-centre hole in its top wall.
     # Air above the wall terminates in transverse PML; z is periodic.

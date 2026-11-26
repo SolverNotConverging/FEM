@@ -28,7 +28,8 @@ DESCRIPTIONS = {
     "resolution": "Initial node counts; use instead of a maximum element size.",
     "wavelength_elements": "Minimum number of initial elements per local wavelength.",
     "element_order": "Finite-element polynomial order supported by this backend.",
-    "quadrature_order": "Element integration order.",
+    "quadrature_order": "Polynomial integration degree for finite-element assembly. Defaults to five.",
+    "solve_options": "Additional keyword arguments accepted by this solver's solve method.",
     "num_modes": "Number of modes requested; positive integer.",
     "neff_guess": "Dimensionless complex effective-index search target.",
     "eigensolver_tolerance": "Algebraic eigensolver convergence tolerance.",
@@ -37,7 +38,7 @@ DESCRIPTIONS = {
     "divergence_tolerance": "Maximum accepted discrete Gauss-law residual.",
     "max_refinements": "Maximum mesh refinements after the initial solve; zero means one solve.",
     "adaptive_tolerance": "Relative discretization-residual stopping threshold.",
-    "thickness": "PML thickness in metres, at each selected exterior end.",
+    "thickness": "Thickness in metres inside each selected outer face. Auto uses one third of the free-space wavelength.",
     "order": "Polynomial order of the PML profile.",
     "direction": "Propagation direction for solve; selected coordinate direction for PML.",
     "sigma_max": "Backend PML-strength magnitude; the outgoing stretch has negative imaginary sign.",
@@ -49,13 +50,6 @@ DESCRIPTIONS = {
     "block": "Wait for the interactive viewer to close when true.",
     "path": "Destination/source HDF5 path. Saving is atomic; loading does not run a solver.",
     "frequencies": "Strictly increasing positive frequencies in hertz.",
-    "angle": "Physical incidence angle in degrees, strictly between -90 and 90; mutually exclusive with ky.",
-    "ky": "Real invariant-direction wavenumber in radians per metre; mutually exclusive with angle.",
-    "amplitude": "Complex incident-mode amplitude.",
-    "side": "Port label, left or right.",
-    "reference_plane": "Incident phase reference position in metres.",
-    "left": "Left monitor/reference-plane position in metres.",
-    "right": "Right monitor/reference-plane position in metres.",
     "potential": "Prescribed electric potential in volts.",
     "outer_potential": "Exterior potential in volts; None permits natural boundaries.",
     "density": "Volume charge density in coulombs per cubic metre.",
@@ -67,7 +61,6 @@ DESCRIPTIONS = {
     "radius": "Positive radius in metres.",
     "points": "Ordered polygon vertex coordinates in metres.",
     "material_aware": "Use material-dependent initial mesh sizing.",
-    "background": "Include this region in both the unperturbed lead and actual device.",
     "dim": "Electrostatic mesh dimension: 1 or 2.",
     "max_elements": "Adaptive mesh element budget.",
     "marking_fraction": "Fraction of squared error indicators marked for refinement.",
@@ -103,24 +96,6 @@ DESCRIPTIONS.update(
         "dielectric_refinement_factor": "Mesh-size multiplier near dielectric interfaces.",
         "pec_refinement_factor": "Mesh-size multiplier near PEC boundaries.",
         "pec_refinement_distance": "Distance in metres over which PEC mesh refinement applies.",
-        "num_elements": "Number of elements in the lead-mode cross-section discretization.",
-        "linear_solver": "Sparse linear-system algorithm; currently direct.",
-        "projection_condition_limit": "Maximum permitted condition number for port-mode projection.",
-        "mesh_options": "Keyword arguments forwarded to mesh() for each frequency case.",
-        "mode_options": "Keyword arguments forwarded to solve_modes() for each frequency case.",
-        "incident_mode": "Zero-based incident lead-mode index.",
-        "mode_factory": "Callback constructing incident-mode data at each frequency; see the sweep guide.",
-        "out_mode": "Zero-based outgoing mode index.",
-        "in_mode": "Zero-based incident mode index.",
-        "power_balance_tolerance": "Maximum acceptable absolute power-balance error in diagnostics.",
-        "projection_condition_warning": "Projection condition-number threshold for a diagnostic warning.",
-        "projection_residual_warning": "Projection relative-residual threshold for a diagnostic warning.",
-        "incoming_projection_warning": "Incoming-wave projection relative-error threshold for a diagnostic warning.",
-        "port_gram_diagonal_warning": "Port Gram-matrix diagonal-error threshold for a diagnostic warning.",
-        "s_parameter_power_tolerance": "Tolerance for disagreement between S-parameter and integrated power ratios.",
-        "enabled": "Enable or disable near-to-far-field recording.",
-        "exterior": "LayeredExterior description of the medium outside the near-to-far-field contour.",
-        "theta": "Observation angles in radians for far-field evaluation.",
     }
 )
 
@@ -146,7 +121,7 @@ def section(name, character="-"):
     return name + "\n" + character * len(name) + "\n\n"
 
 
-def entry(name, obj, returned):
+def entry(name, obj, returned, descriptions=None):
     signature = inspect.signature(obj)
     parameters = [p for p in signature.parameters.values() if p.name not in ("self", "cls")]
     signature = signature.replace(parameters=parameters)
@@ -174,10 +149,9 @@ def entry(name, obj, returned):
             if annotation.startswith("<class '"):
                 annotation = annotation[8:-2]
             default = "—" if p.default is inspect.Parameter.empty else repr(p.default)
-            meaning = DESCRIPTIONS[p.name]
-            if name == "ScatteringSolver2D.solve_modes" and p.name == "num_modes":
-                meaning = "Requested count, or ``None`` to discover propagating port modes."
-            result += f"   * - ``{p.name}``\n     - ``{annotation}``\n     - {'Required' if p.default is inspect.Parameter.empty else 'Optional'}\n     - ``{default}``\n     - {meaning}\n"
+            meaning = (descriptions or {}).get(p.name) or DESCRIPTIONS[p.name]
+            required = p.default is inspect.Parameter.empty and p.kind != inspect.Parameter.VAR_KEYWORD
+            result += f"   * - ``{p.name}``\n     - ``{annotation}``\n     - {'Required' if required else 'Optional'}\n     - ``{default}``\n     - {meaning}\n"
         result += "\n"
     return result + "Returns: " + returned + ".\n\n"
 
@@ -188,6 +162,63 @@ def render_references():
         module = import_module(package)
         out = section(package + " user API", "=")
         out += f"Version {__version__}. This reference covers the deliberately supported user API.\nImplementation helpers are documented in their source modules.\n\n"
+        if package in ("fem.scattering", "fem.antenna"):
+            family = package.split(".")[1]
+            out += section("Plane-wave scattering" if family == "scattering" else "Waveguide-fed antennas")
+            out += f"See the `solver guide <../solvers/{family}.rst>`_ for field conventions and examples.\n\n"
+            out += ", ".join(f"``{name}``" for name in spec["exports"]) + ".\n\n"
+            descriptions = {
+                "direction": "Cartesian propagation direction, normalized internally.",
+                "directions": "Cartesian observation directions, one per row.",
+                "electric_vector": "Real incident electric polarization perpendicular to propagation.",
+                "polarization": "TE (Hz) or TM (Ez) relative to the invariant z axis.",
+                "pml_thickness": "Exterior PML thickness per side in metres. Defaults to one third of the free-space wavelength at the constructor frequency.",
+                "pml_layers": "Number of mesh layers normal to each face of the physical box.",
+                "distance": "Inset in metres from each PML interface, or 'auto' for a wavelength-based vacuum clearance.",
+                "backend": "SciPy CPU or NVIDIA cuDSS (gpu or hybrid). Auto probes cuDSS.",
+                "quantity": "Real part, imaginary part, or magnitude.",
+                "path": "HDF5 result path for save, or .vtm path for export_vtk.",
+                "component": "2D TE: incident, total or scattered Et/Hz (e.g. 'Total Et'); TM: Ez/Ht. 3D: incident, total, scattered or Surface current. RCS in either dimension.",
+                "material": "Isotropic bulk material, PEC, surface impedance or good conductor.",
+            }
+            returns = {"mesh": "the physical mesh", "solve": "a ScatteringResult",
+                       "add_geometry": "None", "add_mesh_refinement": "None", "add_pml": "the PML profile", "add_nf2ff": "None", "show": "the displayed figure or plotter",
+                       "plot": "a Matplotlib figure in 2D or a PyVista plotter in 3D",
+                       "vtk_datasets": "a VTK multiblock dataset",
+                       "radar_cross_section": "an array of widths (m) or areas (m²)",
+                       "save": "the HDF5 path", "export_vtk": "the VTM path"}
+            if family == "antenna":
+                descriptions.update(
+                    name="Unique port name.", axis="Waveguide axis (x, y or z).",
+                    position="Reference plane coordinate in metres along the guide axis.",
+                    u_range="First transverse Cartesian coordinate interval in metres.",
+                    v_range="Second transverse Cartesian coordinate interval in metres.",
+                    cross_section="2D shape selecting the conforming aperture.",
+                    num_modes="Retained mode count. Defaults to the selected mode rank.",
+                    mode="One-based effective-index rank of the launched mode.",
+                    gap="Box or cylinder spanning the two feed terminals along the port axis.",
+                    impedance="Positive real reference impedance in ohms.",
+                    amplitude="Incident power-wave magnitude in square roots of watts.",
+                    phase_deg="Phase in degrees for the drive or displayed vector phasor.",
+                    port="Name of the configured waveguide port.",
+                    path="HDF5 result path.", quantity="Network magnitude (dB) or phase; real or imaginary vector field.",
+                    component="S-parameters, Total E, Total H, Surface current, Directivity, Gain or Realized gain.",
+                )
+                returns.update(solve="an AntennaResult", sweep="an AntennaSweep",
+                               add_waveguide_port="None", add_discrete_port="None", solve_port_modes="a 2D waveguide ModeSet",
+                               show_port_modes="the 2D waveguide mode viewer", set_excitation="None",
+                               far_field="a RadiationPattern", plot="a Matplotlib figure or VTK plotter")
+            for cls_name, methods in (spec["solvers"] | spec["results"]).items():
+                cls = getattr(module, cls_name)
+                for method in methods:
+                    if method == "__init__":
+                        out += entry(cls_name, cls, "the configured solver", descriptions)
+                    else:
+                        out += entry(f"{cls_name}.{method}", getattr(cls, method),
+                                     returns[method], ({**descriptions, "direction": "One face, an axis pair, or all exterior faces."}
+                                                       if method == "add_pml" else descriptions))
+            yield ROOT / spec["documentation"] / f"{family}.rst", out.rstrip() + "\n"
+            continue
         out += section("Workflow and units")
         out += (
             "All lengths are in metres, frequencies in hertz, and constitutive values are relative.\n"
@@ -213,11 +244,7 @@ def render_references():
             out += "Electrostatic fields are static. ``epsilon`` accepts a positive scalar, a\npositive diagonal, or a real symmetric positive-definite tensor. Potential is\nnodal; ``element_electric_field`` and ``element_displacement_field`` are cell\nfields. ``electric_field`` and ``displacement_field`` are nodal averages.\n\n"
         else:
             out += "The time convention is ``exp(+i*omega*t)`` with guided propagation\n``exp(-i*beta*z)``. Passive materials have nonpositive imaginary constitutive\nvalues; passive forward attenuation is ``-Im(beta)``.\n\n"
-            out += (
-                "Scattering uses a two-dimensional x/z mesh for **2.5D full-vector** fields,\nwith invariant factor ``exp(-i*ky*y)``. Scalar epsilon and mu are supported.\nIntegrated power accounting requires passive materials and a lossless uniform\nlead. Port modes remain a separate implementation from standalone mode solvers.\nPML supports x, z, or all; it applies at both ends of the selected axis.\n\n"
-                if package == "fem.scattering"
-                else "Materials support scalar or diagonal epsilon and mu. Unsupported off-diagonal\nforms raise an explicit configuration error. Periodic archives store periodic\nfield envelopes; the Bloch phase is recorded separately from these fields.\n\n"
-            )
+            out += "Materials support scalar or diagonal epsilon and mu. Unsupported off-diagonal\nforms raise an explicit configuration error. Periodic archives store periodic\nfield envelopes; the Bloch phase is recorded separately from these fields.\n\n"
         out += (
             section("Supported exports")
             + ", ".join(f"``{name}``" for name in spec["exports"])
@@ -234,7 +261,7 @@ def render_references():
                     "mesh": "the initial mesh stored in ``mesh_data``",
                     "solve": "the physics-specific result stored in ``result``",
                     "show": "the interactive viewer window",
-                    "sweep": "a frequency sweep result",
+                    "sweep": "an iterator of mode sets in increasing frequency order",
                 }.get(
                     method,
                     "the configured geometry/excitation handle, or None for in-place configuration",
@@ -340,8 +367,6 @@ The same selections work for loaded archives and individual sweep cases.
         out += "``mesh_data.coordinates`` stores physical nodes in metres; ``elements`` stores\nzero-based connectivity. ``axes`` identifies physical coordinate order.\n``mesh_data.metadata['context']`` records material and boundary configuration.\nThe result is an inspection snapshot; editing it cannot restart a solver.\n\n"
         if package == "fem.electrostatics":
             out += "``potential`` is nodal potential in V. ``electric_field`` and\n``displacement_field`` are recovered nodal arrays (V/m and C/m²);\n``element_electric_field`` and ``element_displacement_field`` retain cell fields.\n``conductor_charges`` maps configured conductor names to charge, and\n``energy`` records electrostatic energy (per unit transverse area in 1D,\nper unit length in 2D). ``residual_norm`` is the algebraic residual;\n``adaptive_history`` records mesh sizes, error indicators, and stopping status.\n\n"
-        elif package == "fem.scattering":
-            out += "``E_total``, ``E_incident``, ``E_scattered`` and the matching ``H_*``\narrays have shape (3, samples), in V/m and A/m. ``coordinates`` uses (x, z),\nin metres. ``S(side, out_mode, in_mode)`` returns a complex modal amplitude;\n``S11`` and ``S21`` select the fundamental ports. ``reflection``,\n``transmission``, ``absorption`` and ``power_balance_error`` are power ratios.\n``reference_planes`` stores positions in m; ``port_betas`` stores complex\nwavenumbers in rad/m. ``solve_info`` retains projection, algebraic, and\nadaptive diagnostics. Sweep ``results[index]`` loads one case;\n``frequencies`` is the ordered frequency array. Sweep plotting accepts\nS11/S21 and quantity real, imag, phase, magnitude, abs, or db.\n\n"
         else:
             out += "Each selected mode exposes ``neff`` (dimensionless), ``beta`` (rad/m),\n``fields`` (sampled E/H in V/m and A/m), ``coefficients`` (FEM expansion),\nand ``residual`` (algebraic eigenproblem residual). Field component names\ninclude Ex, Ey, Ez, Hx, Hy, and Hz. Coordinate and cell ownership arrays\npreserve field locations; they must not be interpreted as interchangeable\nnodal or cell values. ``solve_info`` records adaptive history separately.\n\n"
             if package == "fem.periodic":
@@ -367,11 +392,6 @@ The same selections work for loaded archives and individual sweep cases.
             '``hybrid`` explicitly selects that path; ``gpu`` explicitly requires resident CUDA Ritz.\n'
             "Both accelerated choices use cuDSS for direct scattering solves.\n\n"
         )
-        if package == "fem.scattering":
-            out += (
-                '``sweep(backend="gpu")`` selects both device and lead-mode solves;\n'
-                '``mode_options["backend"]`` overrides the lead-mode backend.\n\n'
-            )
         yield ROOT / spec["documentation"] / (package.split(".")[1] + ".rst"), out.rstrip() + "\n"
 
 

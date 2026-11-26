@@ -2,7 +2,6 @@
 from pathlib import Path
 
 import numpy as np
-from tqdm.auto import tqdm
 import fem
 
 OUTPUT = Path(__file__).parent / "outputs" / Path(__file__).stem
@@ -11,13 +10,11 @@ OUTPUT.mkdir(parents=True, exist_ok=True)
 dielectric = fem.Material(name="uniform dielectric", epsilon=2.25)
 frequencies = np.linspace(8e9, 12e9, 7)
 neff_sweep = []
-for case, frequency in enumerate(tqdm(frequencies, desc="Frequency sweep", unit="frequency"), start=1):
-    solver = fem.PeriodicModeSolver3D(frequency=frequency, x_range=20e-3, y_range=10e-3,
-        z_range=5e-3, background_material=dielectric)
-    solver.mesh(max_element_size=6e-3, wavelength_elements=8)
-    # A 1e-8 tolerance resolves this fixed-mesh sweep without chasing roundoff.
-    modes = solver.solve(backend="auto", num_modes=1, max_refinements=0, neff_guess=1.3,
-        eigensolver_tolerance=1e-8)
+solver = fem.PeriodicModeSolver3D(frequency=frequencies[-1], x_range=20e-3, y_range=10e-3,
+    z_range=5e-3, background_material=dielectric)
+cases = solver.sweep(frequencies=frequencies, max_refinements=2, backend="auto", num_modes=1, neff_guess=1.3,
+    eigensolver_tolerance=1e-8)
+for case, modes in enumerate(cases, start=1):
     modes.save(OUTPUT / f"case_{case:03d}.h5")
     neff_sweep.append(modes.neff)
 

@@ -2,7 +2,6 @@
 from pathlib import Path
 
 import numpy as np
-from tqdm.auto import tqdm
 import fem
 
 OUTPUT = Path(__file__).parent / "outputs" / Path(__file__).stem
@@ -11,11 +10,10 @@ OUTPUT.mkdir(parents=True, exist_ok=True)
 dielectric = fem.Material(name="uniform dielectric", epsilon=2.25)
 frequencies = np.linspace(8e9, 12e9, 11)
 neff_sweep = []
-for case, frequency in enumerate(tqdm(frequencies, desc="Frequency sweep", unit="frequency"), start=1):
-    solver = fem.PeriodicModeSolver2D(frequency=frequency, x_range=20e-3, z_range=5e-3,
-        background_material=dielectric, polarization="TM")
-    solver.mesh(max_element_size=3e-3, wavelength_elements=8)
-    modes = solver.solve(backend="auto", num_modes=1, max_refinements=0, neff_guess=1.5)
+solver = fem.PeriodicModeSolver2D(frequency=frequencies[-1], x_range=20e-3, z_range=5e-3,
+    background_material=dielectric, polarization="TM")
+cases = solver.sweep(frequencies=frequencies, max_refinements=2, backend="auto", num_modes=1, neff_guess=1.5)
+for case, modes in enumerate(cases, start=1):
     modes.save(OUTPUT / f"case_{case:03d}.h5")
     neff_sweep.append(modes.neff)
 

@@ -102,7 +102,8 @@ def test_uniform_pec_te_mode_matches_analytic_cutoff() -> None:
     )
     np.testing.assert_allclose(
         mode.component("Ey"),
-        mode.coefficients[mesh.elements].mean(axis=1),
+        (-mode.coefficients[mesh.elements].sum(axis=1)
+         + 4 * mode.coefficients[solver._systems["TE"].basis.facet_dofs[0, mesh.mesh.t2f.T]].sum(axis=1)) / 9,
         rtol=2e-14,
         atol=2e-14,
     )
@@ -205,17 +206,18 @@ def test_lossy_longitudinal_bilayer_matches_transfer_matrix() -> None:
 def test_transverse_pml_has_passive_sign_and_converges() -> None:
     roots: list[complex] = []
     for maximum in (2.0e-3, 1.0e-3):
-        solver = PeriodicModeSolver2D(frequency=10000000000.0, x_range=(0.0, 0.02), z_range=(0.0, 0.005), polarization='TE', background_material=materials.Material(epsilon=2.25, mu=1.0))
+        solver = PeriodicModeSolver2D(frequency=15e9, x_range=(0.0, 0.02), z_range=(0.0, 0.005), polarization='TE')
         solver.add_pml(thickness=0.003, direction='x', sigma_max=3.0)
         solver.mesh(max_element_size=maximum)
-        mode = solver.solve(max_refinements=0, direction='all', eigensolver='dense', num_modes=1, neff_guess=1.33 - 0.07j)[0]
+        guess = .887 - .047j
+        mode = solver.solve(max_refinements=0, direction='all', eigensolver='dense', num_modes=1, neff_guess=guess)[0]
         assert mode.neff.imag < 0.0
         assert mode.gamma.real > 0.0
         assert 0.0 < mode.pml_fraction < 1.0
         if maximum == 2.0e-3:
             with pytest.raises(SolverError, match=r"PML=[1-9]"):
-                solver.solve(max_refinements=0, direction='all', eigensolver='dense', max_pml_fraction=0.0, num_modes=1, neff_guess=1.33 - 0.07j)
-            unfiltered = solver.solve(max_refinements=0, direction='all', eigensolver='dense', max_pml_fraction=None, num_modes=1, neff_guess=1.33 - 0.07j)[0]
+                solver.solve(max_refinements=0, direction='all', eigensolver='dense', max_pml_fraction=0.0, num_modes=1, neff_guess=guess)
+            unfiltered = solver.solve(max_refinements=0, direction='all', eigensolver='dense', max_pml_fraction=None, num_modes=1, neff_guess=guess)[0]
             assert unfiltered.pml_fraction == pytest.approx(mode.pml_fraction)
         roots.append(mode.neff)
     assert abs(roots[1] - roots[0]) / abs(roots[1]) < 1.5e-2

@@ -1,7 +1,7 @@
 # FEM
 
 Finite-element electromagnetic solvers for electrostatics, guided waves, periodic
-structures and waveguide scattering. FEM uses conforming meshes and supports
+structures and plane-wave scattering. FEM uses conforming meshes and supports
 material interfaces, full-vector fields and adaptive refinement. It is a
 pure-Python package with shared CPU/GPU sparse solvers and an interactive
 PySide6/PyVista result viewer.
@@ -17,8 +17,7 @@ solver = fem.ModeSolver2D(frequency=10e9, x_range=(-6e-3, 6e-3), y_range=(-35e-6
 solver.add_rectangle(x_range=(-6e-3, 6e-3), y_range=(0, 1.6e-3), name="substrate", material=fr4)
 solver.add_rectangle(x_range=(-6e-3, 6e-3), y_range=(-35e-6, 0), name="ground", material=copper)
 solver.add_rectangle(x_range=(-1.5e-3, 1.5e-3), y_range=(1.6e-3, 1.635e-3), name="strip", material=copper)
-solver.mesh(max_element_size=0.5e-3)
-modes = solver.solve(num_modes=1)
+modes = solver.solve(num_modes=1, max_refinements=2)
 
 print(f"neff = {modes[0].neff:.4f}, loss = {modes[0].alpha * 8.686:.1f} dB/m")
 modes.save("microstrip.h5")
@@ -35,7 +34,8 @@ dielectric plus copper loss.
 | `fem.ElectrostaticSolver` | Potentials, fields, charges and energies with dielectric interfaces and charge densities | [Guide](docs/solvers/electrostatics.rst) | [Examples](examples/electrostatics/README.rst) |
 | `fem.ModeSolver1D`, `fem.ModeSolver2D` | Guided modes and complex effective indices of slabs and cross-sections | [Guide](docs/solvers/waveguide.rst) | [Examples](examples/waveguide/README.rst) |
 | `fem.PeriodicModeSolver2D`, `fem.PeriodicModeSolver3D` | Bloch modes of 2D/3D periodic cells, including leaky structures | [Guide](docs/solvers/periodic.rst) | [Examples](examples/periodic/README.rst) |
-| `fem.ScatteringSolver2D` | Reflection, transmission, fields and radiation of 2D waveguide discontinuities | [Guide](docs/solvers/scattering.rst) | [Examples](examples/scattering/README.rst) |
+| `fem.ScatteringSolver2D`, `fem.ScatteringSolver3D` | Plane-wave fields and bistatic RCS for 2D TE/TM and 3D targets | [Guide](docs/solvers/scattering.rst) | [Examples](examples/scattering/README.rst) |
+| `fem.AntennaSolver3D` | Numerical waveguide and discrete ports, active S-parameters, directivity, gain and realized gain | [Guide](docs/solvers/antenna.rst) | [Examples](examples/antenna/README.rst) |
 
 ## Install
 
@@ -65,8 +65,8 @@ extraction, or `backend="gpu"` for resident CUDA Ritz extraction as well.
 `backend="auto"` tries hybrid, then warns and falls back to CPU if unavailable.
 The resident GPU eigensolver is used only when explicitly requested. Unavailable
 explicit `hybrid` or `gpu` requests raise an error; `backend="cpu"` uses SciPy.
-For scattering direct solves, `gpu` and `hybrid` both use cuDSS; the distinction
-applies to port-mode eigenvalue extraction.
+For scattering and antenna direct solves, both `gpu` and `hybrid` use cuDSS.
+The antenna solver computes its 2D port modes on the CPU.
 
 In our own [hybrid versus resident GPU benchmark](https://github.com/SolverNotConverging/Electromagnetics-FEM/blob/main/benchmarks/resident_comparison/results/2026-10-16/REPORT.rst), the two paths achieved
 very similar eigenvalue-stage times for the tested small Ritz systems (`ncv=80`).
@@ -83,12 +83,12 @@ Then run an example: `python examples/waveguide/1d_parallel_plate_waveguide.py`.
 
 ## Viewing results
 
-`result.show()` opens one window for every solver: case, mode, component and
-quantity selectors with **Mesh** and **Material** toggles. E and H components are
-shown for every electromagnetic solver (potential, E and D for electrostatics);
-3D periodic cells draw E and H as arrows with PyVista. Sweeps add S-parameter
-spectra and scattering with an NF2FF contour adds far-field patterns. From a
-terminal: `fem view result.h5`, `fem inspect result.h5`, `fem info`.
+Plane-wave scattering displays the incident, total and scattered fields with the
+bistatic RCS. Select the field or RCS in the shared viewer. The 2D solver uses Matplotlib. The 3D solver shows electric-field arrows and an RCS surface using VTK through
+PyVista and exports ParaView datasets with `result.export_vtk("case.vtm")`.
+
+Modal and electrostatic results use the interactive viewer with component, mesh
+and material controls. Use `fem view result.h5` to open a saved result.
 
 ## Documentation
 

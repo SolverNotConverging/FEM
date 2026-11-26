@@ -48,7 +48,7 @@ Solver construction and operations
 
     ElectrostaticSolver(*, dim: 'int' = 2, x_range: 'float | Sequence[float]' = 1.0, y_range: 'float | Sequence[float] | None' = None, background_material: 'materials.Material' = Material(name='vacuum', epsilon=(1+0j), mu=(1+0j)), outer_potential: 'float | None' = 0.0) -> 'None'
 
-Solve ``-div(epsilon_0 epsilon_r grad(phi)) = rho`` with P1 FEM.
+Solve ``-div(epsilon_0 epsilon_r grad(phi)) = rho`` with continuous Lagrange finite elements.
 
 .. list-table:: Arguments
    :header-rows: 1
@@ -459,7 +459,7 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
 
 .. code-block:: python
 
-    ElectrostaticSolver.mesh(*, max_element_size: 'float | None' = None, material_aware: 'bool' = True, interface_refinement: 'float | None' = 0.7, boundary_refinement: 'float | None' = 0.5, interface_refinement_width: 'float | None' = None, boundary_refinement_width: 'float | None' = None) -> 'FEMMesh'
+    ElectrostaticSolver.mesh(*, max_element_size: 'float | None' = None, element_order: 'int' = 2, quadrature_order: 'int' = 5, material_aware: 'bool' = True, interface_refinement: 'float | None' = 0.7, boundary_refinement: 'float | None' = 0.5, interface_refinement_width: 'float | None' = None, boundary_refinement_width: 'float | None' = None) -> 'FEMMesh'
 
 Discretize after geometry; high-Dk regions and boundaries refine locally.
 
@@ -477,6 +477,16 @@ Discretize after geometry; high-Dk regions and boundaries refine locally.
      - Optional
      - ``None``
      - Maximum initial element edge length in metres.
+   * - ``element_order``
+     - ``int``
+     - Optional
+     - ``2``
+     - Finite-element polynomial order supported by this backend.
+   * - ``quadrature_order``
+     - ``int``
+     - Optional
+     - ``5``
+     - Polynomial integration degree for finite-element assembly. Defaults to five.
    * - ``material_aware``
      - ``bool``
      - Optional

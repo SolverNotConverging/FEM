@@ -97,7 +97,7 @@ class ResidentSystem3D:
         basis, solver = self.system.basis, self.solver
         mesh = basis.mesh
         fb = InteriorFacetBasis(mesh, basis.elem, facets=facets, side=side,
-                                dofs=basis.dofs, intorder=max(4, basis.elem.maxdeg*2))
+                                dofs=basis.dofs, intorder=self.system.quadrature_order)
         coordinates = np.asarray(fb.global_coordinates())
         centers = mesh.p[:, mesh.t[:, mesh.f2t[side, facets]]].mean(axis=1)
         inside = coordinates+1e-8*(centers[:, :, None]-coordinates)
@@ -257,7 +257,7 @@ class ResidentSystem3D:
                 mesh=asdict(solver.mesh_data.info), mesh_element_tags=solver.mesh_data.element_tags,
                 periodic_node_pairs=solver.mesh_data.periodic_node_pairs,
                 periodic_edge_pairs=solver.mesh_data.periodic_edge_pairs, edge_nodes=solver.mesh_data.edge_nodes,
-                cell_edges=solver.mesh_data.cell_edges, cell_edge_signs=solver.mesh_data.cell_edge_signs,
+                element_order=solver.mesh_data.info.element_order, cell_edges=solver.mesh_data.cell_edges, cell_edge_signs=solver.mesh_data.cell_edge_signs,
                 physical_names=dict(solver.mesh_data.physical_names), boundary_facets={
                     name: np.asarray(solver.mesh_data.mesh.facets[:, facets].T, dtype=np.int64)
                     for name, facets in solver.mesh_data.boundary_facets.items() if len(facets)},

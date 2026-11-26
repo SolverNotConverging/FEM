@@ -28,6 +28,17 @@ Scripts that save results write to ``examples/periodic/outputs/<example>/``.
 Working with the solver
 -----------------------
 
+The 2D solver defaults to quadratic scalar triangles. The 3D solver uses
+20-function second-order Nédélec tetrahedra with two tangential functions
+per edge and per face. The periodic map pairs both edge and face traces.
+Set ``mesh(element_order=1)`` for first order in either dimension.
+
+``add_pml(thickness="auto", order=3, sigma_max=5.0, direction="all")``
+uses one third of a free-space wavelength inside each selected transverse
+face. A numeric thickness is in metres. In a 2D x-z cell the available faces
+are x− and x+. A 3D cell also supports y− and y+. The z faces remain periodic.
+Leave vacuum between material or conductor geometry and each PML.
+
 Compare lossless and lossy TEM propagation with the homogeneous-medium solution::
 
     python benchmarks/analytical/uniform_periodic_medium.py --check
@@ -37,8 +48,8 @@ complex effective index, passive attenuation, and output tables and plots.
 
 1. Construct the solver with keyword arguments and physical lengths in metres.
 2. Add geometry, material properties, and boundary or excitation conditions.
-3. Call ``mesh(...)`` to choose spatial and element resolution.
-4. Call ``solve(...)`` to obtain a typed result; ``max_refinements=0`` uses one fixed mesh.
+3. Optionally call ``mesh(...)`` to specify an initial mesh size or element order.
+4. Call ``solve(...)`` to generate the mesh automatically and adapt it. Set ``max_refinements=0`` for a fixed mesh.
 5. Inspect diagnostics, then call ``show()``, ``plot()``, or ``save(path)`` explicitly.
 
 
@@ -52,8 +63,7 @@ Workflow
     dielectric = fem.Material(name="uniform dielectric", epsilon=2.25)
     solver = fem.PeriodicModeSolver2D(frequency=10e9, x_range=.02, z_range=.005,
                                       background_material=dielectric)
-    solver.mesh(max_element_size=.003)
-    result = solver.solve(num_modes=1, neff_guess=.66, max_refinements=0)
+    result = solver.solve(num_modes=1, neff_guess=.66, max_refinements=2)
     result.save("periodic.h5")
     loaded = fem.load("periodic.h5")
     figure = loaded.plot(component="Ey", mode=0)
@@ -61,7 +71,7 @@ Workflow
 
 ``solve()`` automatically meshes when needed and never saves or opens a window.
 The adaptive defaults are two refinements and a relative tolerance of 0.05.
-The example uses a fixed mesh for reproducibility. Geometry edits invalidate
+The example allows two adaptive refinements. Geometry edits invalidate
 ``mesh_data`` and ``result``; an automatic rebuild reuses explicit mesh settings.
 
 ``show()`` opens the interactive PyVista/Qt viewer (``fem view result.h5`` opens saved
@@ -94,8 +104,14 @@ for learning order, output locations, and viewer requirements.
 Frequency sweeps
 ----------------
 
-The ``_dispersion.py`` examples solve each frequency with a ``tqdm`` progress
-bar and display both real and imaginary effective indices after the sweep.
+For geometry sweeps at a fixed frequency, see the
+`dielectric image-line perturbation pilot <image_line_pilot.rst>`_. It compares
+one- and two-strip cells and extracts leakage along constant-beta contours.
+
+The ``_dispersion.py`` examples call ``solver.sweep(frequencies=..., num_modes=...)``.
+The highest frequency controls adaptive refinement. The solver reassembles the
+operators on its final physical mesh for each lower frequency. The iterator yields
+mode sets in ascending frequency order for plotting and saving.
 Plot them with ``fem.plot_dispersion``:
 
 .. code-block:: python

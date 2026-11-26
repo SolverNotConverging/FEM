@@ -6,6 +6,8 @@ from math import factorial
 
 import numpy as np
 from skfem import InteriorFacetBasis
+from fem.common.discretization import DEFAULT_QUADRATURE_ORDER
+from fem.common.progress import report_refinement
 
 
 def validate_controls(max_refinements, adaptive_tolerance, error_type=ValueError):
@@ -63,6 +65,9 @@ def run_adaptive(owner, solve_once, estimate, refine, *, max_refinements,
         status = "tolerance" if converged else "refinement_limit" if iteration == limit else "refine"
         history.append({"refinement": iteration, "elements": len(indicators),
                         "residual": float(residual), "status": status})
+        info = getattr(result, "metadata", None) or getattr(result, "solve_info", {})
+        report_refinement(owner, iteration, limit, len(indicators), residual, tolerance, status,
+                          info.get("ndofs"))
         if converged or iteration == limit:
             key = "metadata" if any(field.name == "metadata" for field in fields(result)) else "solve_info"
             updated = replace(result, **{key: {
@@ -102,7 +107,7 @@ def cell_geometry(mesh):
 
 
 def maxwell_jump_residual(basis, fields, material, *, axes, excluded_facets=(),
-                          periodic_node_pairs=None):
+                          periodic_node_pairs=None, quadrature_order=DEFAULT_QUADRATURE_ORDER):
     """Normalized normal-D/tangential-H interface residual, using FE traces.
 
     `fields(basis, material)` returns E and impedance-scaled H, each shaped
@@ -124,7 +129,7 @@ def maxwell_jump_residual(basis, fields, material, *, axes, excluded_facets=(),
 
     def trace(facet_ids, side):
         fb = InteriorFacetBasis(mesh, basis.elem, facets=facet_ids, side=side,
-                                dofs=basis.dofs, intorder=max(4, basis.elem.maxdeg * 2))
+                                dofs=basis.dofs, intorder=quadrature_order)
         coords = np.asarray(fb.global_coordinates())
         centers = mesh.p[:, mesh.t[:, mesh.f2t[side, facet_ids]]].mean(axis=1)
         inside = coords + 1e-8 * (centers[:, :, None] - coords)

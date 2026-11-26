@@ -25,8 +25,7 @@ Materials
 
 ``materials`` exports ``vacuum``, ``air``, ``PEC``, ``PMC``, and the metal SIBC
 presets ``aluminium``, ``copper``, ``gold``, ``molybdenum``, ``palladium``,
-``silver``, ``tungsten``, and ``zinc``. ``materials.SpatialMaterial`` is the
-named callback value accepted by FEM waveguide scattering.
+``silver``, ``tungsten``, and ``zinc``.
 
 Shapes
 ------

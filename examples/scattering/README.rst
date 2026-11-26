@@ -1,35 +1,23 @@
-FEM waveguide scattering examples
-=================================
+Plane-wave scattering examples
+==============================
 
-Install FEM first (``pip install -e .``; see `getting started <../../docs/getting_started.md>`_).
-The `user guide <../../docs/solvers/scattering.rst>`_ and
-`API reference <../../docs/api/scattering.rst>`_ explain supported controls.
+Run either script from the repository root after installing FEM::
 
-``show()`` opens the interactive viewer and needs a display.
-These examples use the ``mesh / solve / show`` workflow. Geometry and material
-configuration precede meshing; the typed result is returned by ``solve()``.
+    python examples/scattering/2d_dielectric_cylinder.py
+    python examples/scattering/3d_copper_sphere.py
 
-Recommended order
------------------
+The `2D cylinder <2d_dielectric_cylinder.py>`_ example saves one Matplotlib
+figure per polarization. Each figure contains the incident, total and
+scattered field and the angular scattering width in metres.
 
-Runtime depends on hardware and mesh size. Single solves are the starting point;
-dispersion and band-structure scripts perform many eigenproblems and can take
-substantially longer. 3D cases also require more memory.
+The `3D sphere <3d_copper_sphere.py>`_ example applies the copper surface
+impedance at 3 GHz. It opens a VTK viewer and writes a ParaView collection
+containing complex electric fields on tetrahedra and bistatic RCS in m² on a
+radial surface. Files are under ``outputs/<example>/`` beside each script.
 
-1. `2d_uniform_waveguide.py <2d_uniform_waveguide.py>`_ — Port modes and transmission through a uniform guide. Single solve.
-2. `2d_dielectric_insert.py <2d_dielectric_insert.py>`_ — Reflection, transmission, and power balance for a weak insert. Single solve.
-3. `2d_dielectric_insert_frequency_sweep.py <2d_dielectric_insert_frequency_sweep.py>`_ — A frequency sweep saved as a multi-case HDF5 archive. Frequency sweep.
-4. `2d_slab_waveguide_oblique_incidence.py <2d_slab_waveguide_oblique_incidence.py>`_ — Oblique incidence with nonzero invariant-direction wavenumber. Single solve.
-5. `2d_grounded_slab_slot.py <2d_grounded_slab_slot.py>`_ — A PEC slot in a grounded slab. Single solve.
-6. `2d_closed_contour_farfield.py <2d_closed_contour_farfield.py>`_ — Matched modal ports and a closed four-sided NF2FF contour through the layered guide. Saves a complex radiation pattern, polar PNG, and reloadable HDF5 contour without opening a window.
+Both examples use a five-layer exterior PML and automatic initial meshing.
+Both examples pass ``max_refinements=2`` to ``solve()``. After the initial solve,
+the solver refines up to twice, stopping early when the residual meets the tolerance.
 
-Run a script from this directory, or pass its path from the repository root.
-Scripts that save results use
-``outputs/<example>/`` next to the scripts.
-
-Backend selection
------------------
-
-Solver calls use ``backend="auto"``. FEM selects GPU when CuPy, the CUDA device,
-and cuDSS are available, otherwise it uses SciPy CPU. Frequency sweeps use
-this selection for both the lead modes and scattering solve.
+See the `solver guide <../../docs/solvers/scattering.rst>`_ for incidence,
+materials, mesh convergence and CUDA selection.

@@ -5,16 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Literal, TypeAlias
 
+from fem.common.discretization import DEFAULT_QUADRATURE_ORDER
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy import linalg
 from scipy.sparse import bmat, csc_matrix, csr_matrix, eye
 from scipy.sparse.linalg import norm as sparse_norm
-from skfem import Basis, BilinearForm, ElementTriP1, asm
+from skfem import Basis, BilinearForm, ElementTriP1, ElementTriP2, asm
 
 from .exceptions import ConfigurationError, SolverError
 from .meshing_2d import FEMPeriodicMesh2D
-from .periodic import PeriodicProlongation, build_node_prolongation
+from .periodic import PeriodicProlongation, build_node_prolongation, trace_dof_pairs
 
 ComplexArray: TypeAlias = NDArray[np.complex128]
 MaterialEvaluator: TypeAlias = Callable[
@@ -143,7 +144,7 @@ def assemble_periodic_system_2d(
     frequency: float,
     k0: float,
     material_at: MaterialEvaluator,
-    quadrature_order: int = 4,
+    quadrature_order: int = DEFAULT_QUADRATURE_ORDER,
 ) -> PeriodicFEMSystem2D:
     """Assemble and periodically reduce the analytic scalar QEP."""
 
@@ -156,7 +157,8 @@ def assemble_periodic_system_2d(
         raise ConfigurationError("quadrature_order must be an integer of at least two.")
 
     computational_mesh = mesh_data.mesh.scaled(float(k0))
-    basis = Basis(computational_mesh, ElementTriP1(), intorder=int(quadrature_order))
+    element = ElementTriP2() if mesh_data.info.element_order == 2 else ElementTriP1()
+    basis = Basis(computational_mesh, element, intorder=int(quadrature_order))
     coordinates = np.asarray(basis.global_coordinates() / k0, dtype=np.float64)
     epsilon, mu = evaluate_material(material_at, coordinates[0], coordinates[1])
     if normalized == "TE":
@@ -179,8 +181,7 @@ def assemble_periodic_system_2d(
     )
     prolongation = build_node_prolongation(
         basis.N,
-        mesh_data.slave_nodes,
-        mesh_data.master_nodes,
+        *trace_dof_pairs(basis, mesh_data.slave_nodes, mesh_data.master_nodes),
         constrained_nodes=constrained,
     )
     reduced = tuple(prolongation.reduce_matrix(matrix) for matrix in full_matrices)

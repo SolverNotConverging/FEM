@@ -215,8 +215,8 @@ def discretize_periodic_2d(
     maximum = float(max_element_size)
     if not np.isfinite(maximum) or maximum <= 0.0:
         raise ConfigurationError("max_element_size must be finite and positive.")
-    if int(element_order) != 1:
-        raise ConfigurationError("v1 supports first-order triangles only.")
+    if element_order not in (1, 2):
+        raise ConfigurationError("element_order must be 1 or 2.")
     try:
         import gmsh
     except Exception as exc:  # pragma: no cover - environment dependent
@@ -483,6 +483,7 @@ def discretize_periodic_2d(
             minimum_edge=hmin,
             maximum_edge=hmax,
             requested_maximum_edge=maximum,
+            element_order=element_order,
         ),
         geometry_revision=geometry.revision,
     )

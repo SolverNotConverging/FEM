@@ -24,7 +24,7 @@ small dense eigenvalue/SVD extraction. CUDA geev/SVD is required only by explici
 `gpu`. Resident GPU iteration transfers two status bytes per cycle and exports
 converged eigenpairs for family-specific processing.
 
-These paths serve 1D/2D waveguides, 2D/3D periodic modes and scattering port modes.
+These paths serve 1D/2D waveguides, 2D/3D periodic modes.
 Periodic sparse eigensolving supports both accelerated backends; dense QZ requires
 CPU. Mesh assembly stays on CPU. Outside the 3D periodic path below, physical
 filters and field reconstruction also run on CPU.
@@ -86,28 +86,13 @@ and include the adaptive estimate even with zero requested refinements.
 
 ## Direct scattering solves
 
-`ScatteringSolver2D.solve(backend="gpu")` uses cuDSS for fresh sparse numeric
-factorization and forward/back substitution of the PEC-reduced complex Maxwell
-system. The default `backend="auto"` selects this same path when the GPU runtime
-is available. This applies to longitudinal PML and matched-port boundaries,
-including nonzero prescribed PEC traces. If lead modes must also be solved,
-the selected backend additionally requires the resident eigenvalue facilities
-described above; supplying existing modes requires only the direct CUDA/cuDSS
-runtime. The result exposes
-`result.solve_info["method"] == "cudss-direct"` and the checked linear residual.
-
-Mesh/matrix/source assembly, PEC condensation, residual validation, field
-reconstruction, monitor projection and the adaptive jump estimator currently run
-on CPU. Matrix/RHS upload and coefficient download occur for each direct solve;
-no factorization is cached between calls. Consequently GPU selection does not
-promise a speedup for small or inexpensive 2D factorizations.
-
-`benchmarks/benchmark_scattering_cudss.py` measures both the complete public solve
-and its direct stage on identical lossy-dielectric scattering systems. The direct
-stage includes PEC condensation, analysis/factorization, substitution, transfers
-and residual validation. Meshing and incident-mode preparation are excluded.
-CPU/GPU runs alternate after warmup, use fresh factors, and check identical
-assembled matrices/sources and matching coefficients and S parameters.
+Both plane-wave solvers accept `solve(backend="gpu")` for complex sparse
+factorization and substitution with cuDSS. `hybrid` uses the same direct solve.
+The default `auto` probes cuDSS and uses SciPy when the runtime is unavailable.
+Assembly, boundary conditions, reconstruction and angular RCS evaluation run
+on the CPU. Inspect `result.solve_info["method"]` for the selected direct solver.
+Run `python benchmarks/benchmark_scattering_cudss.py` to compare CPU and GPU
+fields, RCS and timings on the same mesh with copper SIBC boundaries.
 
 ## Install CUDA support
 

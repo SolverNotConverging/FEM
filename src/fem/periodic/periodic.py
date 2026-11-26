@@ -124,6 +124,30 @@ class PeriodicProlongation:
         return error / scale
 
 
+def trace_dof_pairs(basis, slaves, masters):
+    """Pair nodal, edge and facet trace coefficients of translated simplices."""
+    mesh = basis.mesh
+    mapping = np.full(mesh.nvertices, -1, dtype=int)
+    mapping[slaves] = masters
+    pairs = []
+    if basis.nodal_dofs.size:
+        pairs.extend(zip(basis.nodal_dofs[0, slaves], basis.nodal_dofs[0, masters]))
+    entities = [(mesh.facets, basis.facet_dofs)]
+    if mesh.dim() == 3:
+        entities.append((mesh.edges, basis.edge_dofs))
+    for vertices, dofs in entities:
+        if not dofs.size:
+            continue
+        on_master = np.zeros(mesh.nvertices, dtype=bool)
+        on_master[masters] = True
+        lookup = {tuple(sorted(vertices[:, i])): i for i in np.flatnonzero(on_master[vertices].all(axis=0))}
+        mapped = mapping[vertices]
+        for i in np.flatnonzero((mapped >= 0).all(axis=0)):
+            master = lookup[tuple(sorted(mapped[:, i]))]
+            pairs.extend(zip(dofs[:, i], dofs[:, master]))
+    return np.asarray(pairs, dtype=int).reshape(-1, 2).T
+
+
 def build_node_prolongation(
     node_count: int,
     slave_nodes: ArrayLike,

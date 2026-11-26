@@ -59,9 +59,13 @@ def is_available():
 
 
 def solve_sparse(matrix, rhs):
-    """Factor and solve on CUDA, returning a host vector; no CPU fallback."""
+    """Factor once on CUDA for one or more right-hand sides stored by column."""
     cp, csr_matrix, CudssFactor = _runtime()
     with CudssFactor(csr_matrix(matrix)) as factor:
+        if getattr(rhs, "ndim", 1) == 2:
+            import numpy as np
+            columns = (cp.asarray(column, order="C") for column in rhs.T)
+            return np.column_stack([cp.asnumpy(factor.solve(column)) for column in columns])
         return cp.asnumpy(factor.solve(cp.asarray(rhs)))
 
 

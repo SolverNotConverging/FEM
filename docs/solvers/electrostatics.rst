@@ -13,6 +13,11 @@ the repository root::
 
     python examples/electrostatics/1d_parallel_plate_capacitor.py
 
+The default field basis is quadratic on line segments and triangles.
+Use ``mesh(element_order=1)`` to select linear elements. The solver integrates
+energy from the element gradients. Results expose potential and recovered
+fields at mesh vertices and the full finite-element ``potential_coefficients``.
+
 The script prints node count and electrostatic energy, then opens an interactive potential, field, and mesh viewer.
 
 A Matplotlib GUI backend is needed to display the figures.
@@ -37,8 +42,8 @@ units, the no-fringing boundary conditions, and interpolation-error convergence.
 
 1. Construct the solver with keyword arguments and physical lengths in metres.
 2. Add geometry, material properties, and boundary or excitation conditions.
-3. Call ``mesh(...)`` to choose spatial and element resolution.
-4. Call ``solve(...)`` to obtain a typed result; ``max_refinements=0`` uses one fixed mesh.
+3. Optionally call ``mesh(...)`` to specify an initial mesh size or element order.
+4. Call ``solve(...)`` to generate the mesh automatically and adapt it. Set ``max_refinements=0`` for a fixed mesh.
 5. Inspect diagnostics, then call ``show()``, ``plot()``, or ``save(path)`` explicitly.
 
 
@@ -52,8 +57,7 @@ Workflow
     solver = fem.ElectrostaticSolver(dim=1, x_range=.01, outer_potential=None)
     solver.set_potential(geometry="left", potential=0., name="ground")
     solver.set_potential(geometry="right", potential=1., name="signal")
-    solver.mesh(max_element_size=.001)
-    result = solver.solve(max_refinements=0)
+    result = solver.solve(max_refinements=2)
     result.save("electrostatics.h5")
     loaded = fem.load("electrostatics.h5")
     print(loaded.conductor_charge("signal"))
@@ -61,7 +65,7 @@ Workflow
 
 ``solve()`` automatically meshes when needed and never saves or opens a window.
 The adaptive defaults are two refinements and a relative tolerance of 0.05.
-The example uses a fixed mesh for reproducibility. Geometry edits invalidate
+The example allows two adaptive refinements. Geometry edits invalidate
 ``mesh_data`` and ``result``; an automatic rebuild reuses explicit mesh settings.
 
 ``show()`` opens a Matplotlib window that selects potential, cell fields and mesh.

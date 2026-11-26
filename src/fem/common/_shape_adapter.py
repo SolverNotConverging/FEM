@@ -11,7 +11,7 @@ def native_shape(shape, module):
         return module.Box(shape.bounds[:2], shape.bounds[2:4], shape.bounds[4:])
     if type(shape) is s.Circle:
         return module.Circle(shape.center, shape.radius)
-    if type(shape) is s.Annulus and module.__name__ != 'fem.scattering.geometry':
+    if type(shape) is s.Annulus:
         return module.Circle(shape.center, shape.outer_radius, shape.inner_radius)
     if type(shape) is s.Polygon:
         return module.Polygon(shape.points)

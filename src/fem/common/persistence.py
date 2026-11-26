@@ -21,10 +21,11 @@ FORMAT = "fem-results"
 SCHEMA = "1.0"
 EM_CONVENTION = "exp(+i*omega*t)"
 _FAMILIES = {
+    "antenna": "fem.antenna",
     "electrostatics": "fem.electrostatics",
     "waveguide_modes": "fem.waveguide",
     "periodic_modes": "fem.periodic",
-    "waveguide_scattering": "fem.scattering",
+    "plane_wave_scattering": "fem.scattering",
 }
 
 
@@ -60,14 +61,15 @@ def validate_envelope(handle, *, family, static=False):
                                    f"received {handle.attrs.get(name)!r}. Legacy archives are unsupported.")
     if "field_representation" not in handle.attrs or "dimension" not in handle.attrs or "result_kind" not in handle.attrs:
         raise PersistenceError("Incomplete FEM archive envelope.")
-    representations = {"waveguide_modes": "sampled-fields; exp(-i*beta*z)",
-        "periodic_modes": "periodic-envelope", "waveguide_scattering": "sampled-fields; exp(-i*ky*y)",
+    representations = {"antenna": "power-waves-and-huygens-currents",
+        "waveguide_modes": "sampled-fields; exp(-i*beta*z)",
+        "periodic_modes": "periodic-envelope", "plane_wave_scattering": "plane-wave-phasors",
         "electrostatics": "nodal-potential; nodal-and-cell-fields"}
     if handle.attrs["field_representation"] != representations[family]:
         raise PersistenceError("Incompatible spatial field representation.")
     dimension = handle.attrs["dimension"]
-    dimensions = {"waveguide_modes": (1, 2), "periodic_modes": (0, 2, 3),
-                  "waveguide_scattering": (2,), "electrostatics": (1, 2)}
+    dimensions = {"antenna": (3,), "waveguide_modes": (1, 2), "periodic_modes": (0, 2, 3),
+                  "plane_wave_scattering": (2, 3), "electrostatics": (1, 2)}
     if isinstance(dimension, (bool, np.bool_)) or not isinstance(dimension, (int, np.integer)) or dimension not in dimensions[family]:
         raise PersistenceError("Invalid archive mesh dimension.")
 

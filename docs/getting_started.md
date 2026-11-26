@@ -23,16 +23,15 @@ NVIDIA cuDSS. See [acceleration](acceleration.md).
 import fem
 
 solver = fem.ModeSolver2D(frequency=10e9, x_range=(0, 22.86e-3), y_range=(0, 10.16e-3))
-solver.mesh(max_element_size=1e-3)
-modes = solver.solve(num_modes=2)
+modes = solver.solve(num_modes=2, max_refinements=2)
 print(modes.neff)
 modes.save("modes.h5")
 modes.show()
 ```
 
-Every solver follows the same workflow: construct with SI keyword arguments, add
-materials and geometry, `mesh()`, `solve()`, then `plot()`, `show()` or
-`save(path)`. `fem.load(path)` reopens any saved result.
+Construct the solver with SI keyword arguments, add materials and geometry,
+then call `solve()`. It builds the initial mesh automatically. Use `plot()`,
+`show()` or `save(path)` to inspect or save the result. `fem.load(path)` reopens any saved result.
 
 ## Run examples
 
@@ -48,18 +47,16 @@ Each example writes to an ignored `outputs/<example>/` folder next to the script
 
 ## View results
 
-`result.show()` opens the interactive viewer for every solver family. Choose the
+`result.show()` opens Matplotlib for 2D plane-wave scattering and VTK for 3D scattering. Both display the incident, scattered and total field and RCS. In the modal and electrostatic viewers, choose the
 case (frequency), mode, field component and quantity, and toggle:
 
 - **Mesh** — the finite-element mesh drawn over the field.
-- **Material** — the material regions, labelled with their relative permittivity;
-  scattering results also show PEC/PMC sheets, wave ports and PML interfaces.
+- **Material** — the material regions, labelled with their relative permittivity.
 
 Components cover E and H (Cartesian components and magnitudes); electrostatic
 results show the potential, E and D. In 3D periodic cells the vector fields `E`
 and `H` are drawn as arrows coloured by magnitude (`real`/`imag` select the
-phasor part). Frequency sweeps add an S-parameter spectrum and scattering
-results with an NF2FF contour add far-field patterns. Saved archives open from
+phasor part). Saved archives open from
 the command line:
 
 ```sh

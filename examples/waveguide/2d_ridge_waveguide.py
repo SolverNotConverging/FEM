@@ -13,8 +13,7 @@ solver = fem.ModeSolver2D(frequency=frequency, x_range=(-2e-06, 2e-06), y_range=
 solver.add_rectangle(x_range=(-1e-07, 1e-07), y_range=(-1.1e-07, 1.1e-07), name='silicon_core', material=silicon)
 solver.add_rectangle(x_range=(-1e-06, 1e-06), y_range=(-2e-07, -1.1e-07), name='slab', material=silica)
 
-solver.mesh(max_element_size=1e-07, quadrature_order=4)
-modes = solver.solve(backend="auto", max_refinements=0, num_modes=4)
+modes = solver.solve(backend="auto", max_refinements=2, num_modes=4)
 
 for number, mode in enumerate(modes):
     print(

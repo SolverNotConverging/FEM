@@ -84,8 +84,8 @@ def discretize_1d(
     the domain instead of only in the high-wavenumber intervals.
     """
 
-    if isinstance(element_order, (bool, np.bool_)) or element_order != 1:
-        raise MeshError("The current 1D backend supports element_order=1.")
+    if isinstance(element_order, (bool, np.bool_)) or element_order not in (1, 2):
+        raise MeshError("The current 1D backend supports element_order=1 or 2.")
     width = geometry.x_span[1] - geometry.x_span[0]
     if isinstance(max_element_size, (bool, np.bool_)):
         raise MeshError("max_element_size must be finite and positive.")

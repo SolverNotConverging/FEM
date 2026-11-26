@@ -26,8 +26,8 @@ def compare():
             solver = PeriodicModeSolver2D(frequency=frequency, x_range=0.004, z_range=0.005, polarization='TM', boundary=materials.PEC, background_material=medium)
             solver.mesh(max_element_size=.001)
             mode = solver.solve(
-                num_modes=1, neff_guess=exact, max_refinements=0,
-                direction='forward', eigensolver='dense',
+                num_modes=1, neff_guess=0.999 * exact, max_refinements=0,
+                direction='forward', eigensolver='auto',
             )[0]
             k0 = 2 * np.pi * frequency / c
             row = dict(

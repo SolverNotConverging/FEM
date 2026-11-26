@@ -4,7 +4,8 @@ from __future__ import annotations
 from fem.common import materials
 from .scene import ElectrostaticSceneMixin, static_epsilon
 
-from fem.common.validation import positive_real, finite_real
+from fem.common.progress import report_refinement
+from fem.common.discretization import DEFAULT_QUADRATURE_ORDER, field_orders
 from fem.common.contracts import SolverMixin
 from fem.common.validation import positive_real, finite_real
 from fem.common.contracts import bounds
@@ -37,7 +38,7 @@ def _dimension(value: int) -> int:
 
 
 class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
-    """Solve ``-div(epsilon_0 epsilon_r grad(phi)) = rho`` with P1 FEM.
+    """Solve ``-div(epsilon_0 epsilon_r grad(phi)) = rho`` with continuous Lagrange finite elements.
 
     The constructor records only a physical domain and optional target mesh
     settings. Materials, charge regions, and fixed potentials remain continuous
@@ -156,6 +157,8 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
         self,
         *,
         max_element_size: float | None = None,
+        element_order: int = 2,
+        quadrature_order: int = DEFAULT_QUADRATURE_ORDER,
         material_aware: bool = True,
         interface_refinement: float | None = 0.7,
         boundary_refinement: float | None = 0.5,
@@ -164,6 +167,7 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
     ) -> FEMMesh:
         """Discretize after geometry; high-Dk regions and boundaries refine locally."""
         self._require_conductor_potentials()
+        element_order, quadrature_order = field_orders(element_order, quadrature_order, (1, 2))
 
         maximum = self._default_maximum_size() if max_element_size is None else positive_real(max_element_size, "max_element_size")
         settings = {
@@ -184,14 +188,16 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
             )
         else:
             self.mesh_data = discretize_2d(self.geometry, **settings)
-        self._discretization_settings = settings
+        self.mesh_data = replace(self.mesh_data, info=replace(self.mesh_data.info, element_order=element_order))
+        self._discretization_settings = dict(settings, element_order=element_order, quadrature_order=quadrature_order)
         self._clear_solution()
         return self.mesh_data
 
-    def _boundary_mask(self, selector: str) -> NDArray[np.bool_]:
+    def _boundary_mask(self, selector: str, basis) -> NDArray[np.bool_]:
         assert self.mesh_data is not None
         mesh = self.mesh_data.mesh
-        facets = mesh.facets[:, mesh.boundary_facets()]
+        indices = mesh.boundary_facets()
+        facets = mesh.facets[:, indices]
         if selector != "outer":
             # Each exterior facet of the interval or rectangle belongs to one
             # side. Its midpoint distinguishes sides even at shared corners.
@@ -203,25 +209,25 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
                 y0, y1 = self.y_range
                 sides.extend(("bottom", "top"))
                 distances.extend((abs(centers[1] - y0), abs(centers[1] - y1)))
-            facets = facets[:, np.argmin(distances, axis=0) == sides.index(selector)]
-        mask = np.zeros(mesh.nvertices, dtype=bool)
-        mask[facets] = True
+            indices = indices[np.argmin(distances, axis=0) == sides.index(selector)]
+        mask = np.zeros(basis.N, dtype=bool)
+        mask[basis.get_dofs(facets=indices).all()] = True
         return mask
 
-    def _dirichlet_data(self) -> tuple[NDArray[np.bool_], NDArray[np.float64], dict[str, NDArray[np.bool_]]]:
+    def _dirichlet_data(self, basis) -> tuple[NDArray[np.bool_], NDArray[np.float64], dict[str, NDArray[np.bool_]]]:
         assert self.mesh_data is not None
-        nodes = self.mesh_data.nodes
+        nodes = basis.doflocs.T
         fixed = np.zeros(len(nodes), dtype=bool)
         values = np.zeros(len(nodes), dtype=float)
         named_masks: dict[str, NDArray[np.bool_]] = {}
         if self.outer_potential is not None:
-            mask = self._boundary_mask("outer")
+            mask = self._boundary_mask("outer", basis)
             fixed[mask] = True
             values[mask] = self.outer_potential
             named_masks["outer"] = mask.copy()
         for region in self.geometry.potentials:
             if isinstance(region.shape, str):
-                mask = self._boundary_mask(region.shape)
+                mask = self._boundary_mask(region.shape, basis)
             elif self.dim == 1:
                 mask = np.asarray(region.shape.contains(nodes[:, 0]), dtype=bool)  # type: ignore[union-attr]
             else:
@@ -239,15 +245,17 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
             raise SolverError("the electrostatic problem needs at least one fixed-potential constraint.")
         return fixed, values, named_masks
 
-    def _assemble(self) -> tuple[object, NDArray[np.float64]]:
+    def _assemble(self):
         assert self.mesh_data is not None
         try:
             from skfem import Basis, BilinearForm, LinearForm, asm
-            from skfem.element import ElementLineP1, ElementTriP1
+            from skfem.element import ElementLineP1, ElementLineP2, ElementTriP1, ElementTriP2
             from skfem.helpers import grad
         except Exception as exc:
             raise SolverError("scikit-fem could not be imported; install the package dependencies.") from exc
-        basis = Basis(self.mesh_data.mesh, ElementLineP1() if self.dim == 1 else ElementTriP1(), intorder=3)
+        elements = (ElementLineP1, ElementLineP2) if self.dim == 1 else (ElementTriP1, ElementTriP2)
+        basis = Basis(self.mesh_data.mesh, elements[self.mesh_data.info.element_order - 1](),
+                      intorder=self._discretization_settings["quadrature_order"])
         if self.dim == 1:
             @BilinearForm
             def stiffness(u: object, v: object, w: object) -> object:
@@ -287,45 +295,33 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
             if density != 0.0:
                 indices = np.flatnonzero(densities == density)
                 rhs += np.asarray(asm(source, basis.with_elements(indices), rho=float(density)), dtype=float)
-        return matrix.tocsr(), rhs
+        return matrix.tocsr(), rhs, basis
 
-    def _fields(self, potential: NDArray[np.float64]) -> tuple[
-        NDArray[np.float64], NDArray[np.float64], float,
-        NDArray[np.float64], NDArray[np.float64],
-    ]:
-        assert self.mesh_data is not None
-        points, elements = self.mesh_data.nodes, self.mesh_data.elements
-        if self.dim == 1:
-            delta = points[elements[:, 1], 0] - points[elements[:, 0], 0]
-            measures = np.abs(delta)
-            element_e = (-(potential[elements[:, 1]] - potential[elements[:, 0]]) / delta)[:, None]
-        else:
-            vertices = points[elements]
-            systems = np.stack((vertices[:, 1] - vertices[:, 0], vertices[:, 2] - vertices[:, 0]), axis=1)
-            differences = np.stack((potential[elements[:, 1]] - potential[elements[:, 0]], potential[elements[:, 2]] - potential[elements[:, 0]]), axis=1)
-            # Keep the right-hand side explicitly column-shaped for NumPy 2.x
-            # batched solve semantics, then remove that final singleton axis.
-            element_e = -np.linalg.solve(systems, differences[..., None])[..., 0]
-            measures = 0.5 * np.abs(np.linalg.det(systems))
-        element_d = np.empty_like(element_e)
+    def _fields(self, basis, potential):
+        from skfem import Basis
+        mesh = self.mesh_data
+        vertices = basis.elem.refdom.p
+        samples = Basis(mesh.mesh, basis.elem, dofs=basis.dofs,
+                        quadrature=(vertices, np.ones(vertices.shape[1])))
+        corner_e = -samples.interpolate(potential).grad.transpose(1, 2, 0)
+        field = -basis.interpolate(potential).grad.transpose(1, 2, 0)
+        corner_d = np.empty_like(corner_e)
         energy = 0.0
         for tag, material in self.geometry.material_table.items():
-            mask = self.mesh_data.element_tags == tag
-            element_d[mask] = EPSILON_0 * (element_e[mask] @ material.array.T)
-            energy += 0.5 * float(np.sum(measures[mask] * np.einsum("ni,ni->n", element_e[mask], element_d[mask])))
-        nodal_e = np.zeros((len(points), self.dim), dtype=float)
-        nodal_d = np.zeros_like(nodal_e)
-        weights = np.zeros(len(points), dtype=float)
-        for local in range(elements.shape[1]):
-            nodes = elements[:, local]
-            np.add.at(nodal_e, nodes, element_e * measures[:, None])
-            np.add.at(nodal_d, nodes, element_d * measures[:, None])
+            mask = mesh.element_tags == tag
+            corner_d[mask] = EPSILON_0 * (corner_e[mask] @ material.array.T)
+            displacement = EPSILON_0 * (field[mask] @ material.array.T)
+            energy += .5 * np.sum(basis.dx[mask] * np.sum(field[mask] * displacement, axis=2))
+        measures = basis.dx.sum(axis=1)
+        weights = np.zeros(len(mesh.nodes))
+        nodal_e = np.zeros_like(mesh.nodes)
+        nodal_d = np.zeros_like(mesh.nodes)
+        for local, nodes in enumerate(mesh.elements.T):
             np.add.at(weights, nodes, measures)
-        nodal_e /= weights[:, None]
-        nodal_d /= weights[:, None]
-        # P1 gradients are constant per element and can jump at dielectric
-        # interfaces.  Preserve these physical fields before nodal averaging.
-        return nodal_e, nodal_d, energy, element_e, element_d
+            np.add.at(nodal_e, nodes, corner_e[:, local] * measures[:, None])
+            np.add.at(nodal_d, nodes, corner_d[:, local] * measures[:, None])
+        return (nodal_e / weights[:, None], nodal_d / weights[:, None], float(energy),
+                corner_e.mean(axis=1), corner_d.mean(axis=1), corner_d)
 
     def solve(
         self, *, linear_solver_tolerance: float = 1e-10, max_refinements: int = 2,
@@ -371,7 +367,7 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
             centers = result.coordinates[result.elements].mean(axis=1)
             indicators, error = flux_indicators(
                 result.mesh, result.element_displacement_field,
-                self.geometry.charge_at(centers), self.fixed_mask,
+                self.geometry.charge_at(centers), self.fixed_mask, self._corner_displacement,
             )
             if not np.isfinite(error):
                 raise SolverError("The adaptive flux indicator is non-finite.")
@@ -396,6 +392,8 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
                 record["status"] = "element_limit"
                 break
             record["marked_elements"] = len(marked)
+            report_refinement(self, step, max_refinements, len(result.elements), error,
+                              adaptive_tolerance, f"refining {len(marked)} elements")
             previous_mask = self.fixed_mask
             self.mesh_data = candidate
             try:
@@ -406,6 +404,8 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
                 self.potential = result.potential
                 self.fixed_mask = previous_mask
                 raise
+        report_refinement(self, step, max_refinements, len(result.elements), error,
+                          adaptive_tolerance, record["status"])
         result = replace(result, adaptive_history=tuple(history))
         return self._finish_result(result)
 
@@ -419,8 +419,8 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
         if self.mesh_data is None:
             self.mesh(**(self._discretization_settings or {}))
         assert self.mesh_data is not None
-        matrix, rhs = self._assemble()
-        fixed, values, named_masks = self._dirichlet_data()
+        matrix, rhs, basis = self._assemble()
+        fixed, values, named_masks = self._dirichlet_data(basis)
         free = ~fixed
         potential = values.copy()
         if np.any(free):
@@ -451,13 +451,20 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
         residual_norm = float(np.linalg.norm(reaction[free]) / denominator)
         if not np.isfinite(residual_norm) or residual_norm > max(100.0 * tolerance, 1e-9):
             raise SolverError(f"FEM solve residual {residual_norm:.3e} exceeds tolerance.")
-        electric, displacement, energy, element_e, element_d = self._fields(potential)
+        electric, displacement, energy, element_e, element_d, corner_d = self._fields(basis, potential)
+        # Condense midpoint reactions onto the two endpoint linear test functions.
+        n = basis.mesh.nvertices
+        vertex_reaction = reaction[:n].copy()
+        if basis.elem.maxdeg == 2:
+            edges = basis.mesh.t if self.dim == 1 else basis.mesh.facets
+            np.add.at(vertex_reaction, edges, np.broadcast_to(reaction[n:] / 2, edges.shape))
         result = ElectrostaticResult(
             mesh=self.mesh_data,
-            potential=potential,
+            potential=potential[:n],
+            potential_coefficients=potential if basis.elem.maxdeg == 2 else None,
             electric_field=electric,
             displacement_field=displacement,
-            reaction=reaction,
+            reaction=vertex_reaction,
             conductor_charges={name: float(np.sum(reaction[mask])) for name, mask in named_masks.items()},
             energy=energy,
             residual_norm=residual_norm,
@@ -466,7 +473,8 @@ class ElectrostaticSolver(ElectrostaticSceneMixin, SolverMixin):
         )
         self._result = result
         self.potential = result.potential
-        self.fixed_mask = fixed
+        self.fixed_mask = fixed[:n]
+        self._corner_displacement = corner_d
         return result
 
     def compute_electric_field(self) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:

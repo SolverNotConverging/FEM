@@ -79,7 +79,7 @@ def verify_summary(rows):
                            passed=error<1e-6,error=error))
     for package,prefixes in [
         ('FEM',('electrostatic_1d','electrostatic_2d','waveguide_1d','waveguide_2d','periodic_2d',
-                'periodic_3d','scattering_slab','sibc_2d','dielectric_slab')),
+                'periodic_3d','scattering_cylinder','sibc_2d','dielectric_slab')),
         ('FDFD',('waveguide_1d','waveguide_2d','periodic_2d','bands_2d','scattering_cylinder',
                  'tracking_1d','tracking_2d','sibc_2d','dielectric_slab'))]:
         for prefix in prefixes:
@@ -238,25 +238,24 @@ def bands():
 
 
 def scattering():
-    # Exact Fabry-Perot slab coefficients, with the public port reference phases.
-    f,width,d=10e9,.005,.006
-    k=2*np.pi*f/c
-    r0=(1-2)/(1+2)
-    p=np.exp(-1j*2*k*d)
-    reflection=r0*(1-p*p)/(1-r0*r0*p*p)
-    transmission=(1-r0*r0)*p/(1-r0*r0*p*p)*np.exp(1j*k*d)
-    for n in (1,2):
-        fe=fem.ScatteringSolver2D(frequency=f,x_range=(0.,width),z_range=(-.025,.025),boundary=fem.materials.PEC)
-        fe.add_rectangle(x_range=fe.x_range,z_range=(-d/2,d/2),material=fem.Material(epsilon=4.))
-        fe.set_matched_ports()
-        fe.mesh(max_element_size=.0009,element_order=n)
-        for backend in ('cpu','gpu'):
-            fe.solve_modes(num_modes=1,neff_guess=1.,num_elements=40,max_refinements=0,backend=backend)
-            fe.set_incident_mode(0,reference_plane=-d/2)
-            r=fe.solve(backend=backend,max_refinements=0)
-            record('scattering_slab_S11_S21','FEM',backend,n,[r.S11,r.S21],
-                   [reflection,transmission],.025 if n==1 else .004,metric='absolute')
-            record('scattering_slab_power','FEM',backend,n,r.reflection+r.transmission,1.,.01,metric='absolute')
+    for pol in ("TE", "TM"):
+        radius, frequency = .025, 3e9
+        k = 2*np.pi*frequency/c
+        n = np.arange(-15, 16)
+        x = k*radius
+        coef = -jv(n,x)/hankel2(n,x) if pol == "TM" else -jvp(n,x)/h2vp(n,x)
+        angles = np.linspace(0, np.pi, 31)
+        exact = 4/k*abs(np.exp(1j*angles[:,None]*n) @ coef)**2
+        directions = np.column_stack((np.cos(angles), np.sin(angles)))
+        fe = fem.ScatteringSolver2D(frequency=frequency, x_range=(-.18,.18),
+                                    y_range=(-.18,.18), polarization=pol)
+        fe.add_geometry(shape=fem.shapes.Circle(center=(0,0), radius=radius), material=fem.materials.PEC)
+        for resolution in (24, 40):
+            fe.mesh(max_element_size=c/frequency/resolution)
+            for backend in ("cpu", "gpu"):
+                result = fe.solve(backend=backend, max_refinements=0)
+                record("scattering_cylinder_PEC_"+pol, "FEM", backend, resolution,
+                       result.radar_cross_section(directions), exact, .12)
     # Independent Bessel/Hankel series: physical field error outside a cylinder.
     for pol in ('TE','TM'):
         for obj in ('PEC','dielectric'):

@@ -456,6 +456,25 @@ def _mesh_key(record: dict[str, Any]) -> str:
     return _hash_record(*values)
 
 
+def _coefficient_space(dim, order):
+    if dim == 2:
+        return "P2-scalar-nodal" if order == 2 else "P1-scalar-nodal"
+    return "Nedelec-N2-canonical-edges-faces" if order == 2 else "Nedelec-N1-canonical-edges"
+
+
+def _coefficient_count(mesh, order):
+    dim = mesh["dimension"]
+    base = len(mesh["points"]) if dim == 2 else len(mesh["optional"]["edge_nodes"])
+    if order == 1:
+        return base
+    # Codimension-one entities are edges in 2D and triangular faces in 3D.
+    from itertools import combinations
+    cells = mesh["cells"]
+    facets = np.concatenate([cells[:, side] for side in combinations(range(dim + 1), dim)])
+    count = len(np.unique(np.sort(facets, axis=1), axis=0))
+    return base + count if dim == 2 else 2 * (base + count)
+
+
 def _validate_case(mode_set: PeriodicModeSet) -> None:
     if not isinstance(mode_set, PeriodicModeSet):
         raise TypeError("Every saved case must be a PeriodicModeSet.")
@@ -478,16 +497,10 @@ def _prepare_cases(mode_sets: Sequence[PeriodicModeSet]) -> tuple[list[dict[str,
     for mode_set in mode_sets:
         _validate_case(mode_set)
         mesh = _mesh_record(mode_set)
-        expected_dofs = (
-            mesh["points"].shape[0]
-            if mode_set.dimension == 2
-            else mesh["optional"]["edge_nodes"].shape[0]
-        )
+        order = int(mode_set.metadata.get("element_order", 1))
+        expected_dofs = _coefficient_count(mesh, order)
         if any(mode.coefficients.size != expected_dofs for mode in mode_set):
-            space = "mesh nodes" if mode_set.dimension == 2 else "canonical mesh edges"
-            raise PersistenceError(
-                f"full_expanded coefficients must contain one degree of freedom per {space}."
-            )
+            raise PersistenceError("Expanded coefficient count does not match the mesh degree-of-freedom count.")
         mesh_key = _mesh_key(mesh)
         mesh_index = mesh_indices.get(mesh_key)
         if mesh_index is None:
@@ -667,9 +680,9 @@ def _write_archive(path: Path, mode_sets: Sequence[PeriodicModeSet]) -> None:
             )
 
             coefficients = group.create_group("coefficients")
-            coefficients.attrs["space"] = (
-                "P1-scalar-nodal" if mode_set.dimension == 2 else "Nedelec-N1-canonical-edges"
-            )
+            order = int(mode_set.metadata.get("element_order", 1))
+            coefficients.attrs["element_order"] = order
+            coefficients.attrs["space"] = _coefficient_space(mode_set.dimension, order)
             coefficients.attrs["full_expanded"] = 1
             primary = [
                 "Ey" if mode.polarization == "TE" and mode_set.dimension == 2 else
@@ -1075,21 +1088,16 @@ class PeriodicH5Archive:
                 or int(full_expanded) != 1
             ):
                 raise PersistenceError("Coefficients must declare full_expanded=1.")
-            expected_space = (
-                "P1-scalar-nodal"
-                if mesh["dimension"] == 2
-                else "Nedelec-N1-canonical-edges"
-            )
+            order = coefficients.attrs.get("element_order", 1)
+            if order not in (1, 2):
+                raise PersistenceError("Invalid coefficient element order.")
+            expected_space = _coefficient_space(mesh["dimension"], order)
             space = _scalar_text_attribute(coefficients, "space")
             if space != expected_space:
                 raise PersistenceError(
                     f"Coefficient space {space!r} is incompatible with the case mesh."
                 )
-            expected_dofs = (
-                mesh["points"].shape[0]
-                if mesh["dimension"] == 2
-                else mesh["optional"]["edge_nodes"].shape[0]
-            )
+            expected_dofs = _coefficient_count(mesh, order)
             if coefficient_values.shape[1] != expected_dofs:
                 raise PersistenceError(
                     "Expanded coefficient count does not match the mesh degree-of-freedom count."

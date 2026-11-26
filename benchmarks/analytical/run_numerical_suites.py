@@ -50,11 +50,7 @@ if PACKAGE=='FEM':
            'tests/waveguide/test_boolean_impedance_frame.py',
            'tests/periodic/test_solver_2d.py','tests/periodic/test_solver_3d.py',
            'tests/periodic/test_periodic_constraints.py','tests/electrostatics/test_fem_solver.py',
-           'tests/electrostatics/test_adaptive_solve.py','tests/scattering/test_matched_ports.py',
-           'tests/scattering/test_uniform_scattering.py','tests/scattering/test_energy_conservation.py',
-           'tests/scattering/test_pml_convergence.py','tests/scattering/test_scattering_validations.py',
-           'tests/scattering/test_dielectric_perturbation.py','tests/scattering/test_inserted_pec_scattering.py',
-           'tests/scattering/test_mode_pml.py','tests/scattering/test_pml.py',
+           'tests/electrostatics/test_adaptive_solve.py','tests/scattering/test_plane_wave.py',
            'tests/common/test_eigenvalue_regressions.py']
 else:
     files=['tests/waveguide','tests/periodic','tests/bands','tests/scattering','tests/tracking',

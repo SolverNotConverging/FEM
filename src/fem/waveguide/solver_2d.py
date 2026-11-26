@@ -16,12 +16,13 @@ from fem.common.validation import finite_complex as _finite_complex
 from fem.common import materials
 from .scene import WaveguideScene2D
 
-from fem.common.contracts import ElectromagneticSolverMixin
+from fem.common.modal_sweep import ModalSolverMixin
 
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, replace
 from typing import Any, Literal
 
+from fem.common.discretization import DEFAULT_QUADRATURE_ORDER
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
@@ -64,7 +65,6 @@ FloatArray = NDArray[np.float64]
 Direction = Literal["forward", "backward", "all"]
 
 _COMPONENT_ORDER = ("Ex", "Ey", "Ez", "Hx", "Hy", "Hz")
-_PML_DIRECTIONS = {"x-", "x+", "x", "y-", "y+", "y", "all"}
 
 
 def _optional_refinement_factor(value: Any, name: str) -> float | None:
@@ -90,7 +90,7 @@ def _forward_root(value: complex) -> complex:
     return root
 
 
-class ModeSolver2D(WaveguideScene2D, ElectromagneticSolverMixin):
+class ModeSolver2D(WaveguideScene2D, ModalSolverMixin):
     """Full-vector 2D FEM waveguide mode solver.
 
     Parameters are physical SI values.  A scalar ``x_range`` or ``y_range``
@@ -98,6 +98,8 @@ class ModeSolver2D(WaveguideScene2D, ElectromagneticSolverMixin):
     Geometry can be placed in any order before an explicit call to
     :meth:`mesh`.
     """
+
+    _pml_axes = "xy"
 
     def __init__(self, *, frequency: float, x_range: float | Sequence[float], y_range: float | Sequence[float], background_material: materials.Material=materials.vacuum, boundary: materials.IdealBoundary=materials.PEC) -> None:
         self._init_scene(background_material=background_material)
@@ -325,37 +327,6 @@ class ModeSolver2D(WaveguideScene2D, ElectromagneticSolverMixin):
         self._geometry_changed()
         return handle
 
-    def add_pml(self, *, thickness: float, order: int=3, sigma_max: float=5.0, direction: str='all') -> PMLSpec:
-        """Add a physical-width uniaxial PML to selected exterior side(s)."""
-
-        width = _positive_real(thickness, "thickness")
-        normalized = str(direction).strip().lower()
-        if normalized == "both":
-            normalized = "all"
-        if normalized not in _PML_DIRECTIONS:
-            choices = ", ".join(sorted(_PML_DIRECTIONS))
-            raise ConfigurationError(f"direction must be one of {choices}.")
-        order = _positive_integer(order, "order")
-        loss = float(sigma_max)
-        if not np.isfinite(loss) or loss < 0.0:
-            raise ConfigurationError("sigma_max must be finite and nonnegative.")
-
-        xwidth = self.x_span[1] - self.x_span[0]
-        ywidth = self.y_span[1] - self.y_span[0]
-        if normalized in ("x", "all") and 2.0 * width >= xwidth:
-            raise ConfigurationError("Opposing x PMLs must leave a nonempty physical region.")
-        if normalized in ("y", "all") and 2.0 * width >= ywidth:
-            raise ConfigurationError("Opposing y PMLs must leave a nonempty physical region.")
-        if normalized in ("x-", "x+") and width >= xwidth:
-            raise ConfigurationError("The x PML must be thinner than the domain.")
-        if normalized in ("y-", "y+") and width >= ywidth:
-            raise ConfigurationError("The y PML must be thinner than the domain.")
-
-        spec = self.geometry.add_pml(
-            PMLSpec(width, order=order, sigma_max=loss, direction=normalized)
-        )
-        self._geometry_changed()
-        return spec
 
 
     def _set_outer_boundary_impl(self, *, kind: str) -> None:
@@ -426,7 +397,7 @@ class ModeSolver2D(WaveguideScene2D, ElectromagneticSolverMixin):
         boundary_refinement: float | None = 0.5,
         boundary_refinement_width: float | None = None,
         element_order: int = 2,
-        quadrature_order: int = 4,
+        quadrature_order: int = DEFAULT_QUADRATURE_ORDER,
     ) -> FEMMesh2D:
         """Mesh the scene and assemble its analytic quadratic pencil.
 
@@ -473,7 +444,7 @@ class ModeSolver2D(WaveguideScene2D, ElectromagneticSolverMixin):
         )
         order = _positive_integer(element_order, "element_order")
         quadrature = _positive_integer(
-            quadrature_order, "quadrature_order", minimum=2
+            quadrature_order, "quadrature_order", minimum=2 * order
         )
         if not isinstance(material_aware, (bool, np.bool_)):
             raise ConfigurationError("material_aware must be a boolean.")
@@ -542,6 +513,32 @@ class ModeSolver2D(WaveguideScene2D, ElectromagneticSolverMixin):
             boundary_refinement_width=boundary_width,
             _refinement_scale=refinement_scale,
         )
+        system = self._assemble_mesh(mesh_data, order, quadrature)
+        self._invalidate_solution()
+        self._mesh_data = mesh_data
+        self._system = system
+        self._discretized_revision = self.geometry.revision
+        self._discretization_settings = {
+            "max_element_size": maximum,
+            "resolution": resolution,
+            "wavelength_elements": wavelength_count,
+            "material_aware": bool(material_aware),
+            "interface_refinement": interface_factor,
+            "interface_refinement_width": interface_width,
+            "boundary_refinement": boundary_factor,
+            "boundary_refinement_width": boundary_width,
+            "element_order": order,
+            "quadrature_order": quadrature,
+            "refinement_scale": refinement_scale,
+        }
+        return mesh_data
+
+    def _reassemble_frequency(self):
+        self._system = self._assemble_mesh(self.mesh_data, self._discretization_settings["element_order"],
+                                           self.system.quadrature_order)
+        self._symmetry_cache = None
+
+    def _assemble_mesh(self, mesh_data, order, quadrature):
         pec_parts = [
             mesh_data.boundary_facets[name]
             for name in ("outer_pec", "pec")
@@ -577,7 +574,7 @@ class ModeSolver2D(WaveguideScene2D, ElectromagneticSolverMixin):
             if self.geometry.pmls
             else self.geometry.material_at
         )
-        system = assemble_mode_system_2d(
+        return assemble_mode_system_2d(
             mesh_data.mesh,
             frequency=self.frequency,
             k0=self.k0,
@@ -588,24 +585,18 @@ class ModeSolver2D(WaveguideScene2D, ElectromagneticSolverMixin):
             pec_facets=pec_facets,
             impedance_boundaries=impedance_boundaries,
         )
-        self._invalidate_solution()
+
+    def _solve_cross_section(self, mesh_data, material_at, num_modes, target, impedance_boundaries, quadrature_order):
+        """Solve on an existing conforming port mesh without remeshing its trace."""
         self._mesh_data = mesh_data
-        self._system = system
         self._discretized_revision = self.geometry.revision
-        self._discretization_settings = {
-            "max_element_size": maximum,
-            "resolution": resolution,
-            "wavelength_elements": wavelength_count,
-            "material_aware": bool(material_aware),
-            "interface_refinement": interface_factor,
-            "interface_refinement_width": interface_width,
-            "boundary_refinement": boundary_factor,
-            "boundary_refinement_width": boundary_width,
-            "element_order": order,
-            "quadrature_order": quadrature,
-            "refinement_scale": refinement_scale,
-        }
-        return mesh_data
+        self._system = assemble_mode_system_2d(
+            mesh_data.mesh, frequency=self.frequency, k0=self.k0, material_at=material_at,
+            pec_facets=mesh_data.boundary_facets["pec"], impedance_boundaries=impedance_boundaries,
+            element_order=mesh_data.info.element_order, quadrature_order=quadrature_order,
+        )
+        return self._solve_once(neff_guess=target, num_modes=num_modes, backend="cpu",
+                                dense_linearization_limit=120)
 
     def refine(self, factor: float = 2.0) -> FEMMesh2D:
         """Remesh with ``factor`` times the density and rebuild the system.
@@ -1111,7 +1102,7 @@ class ModeSolver2D(WaveguideScene2D, ElectromagneticSolverMixin):
             )
         return result
 
-    def mesh(self, *, max_element_size: float | None=None, resolution: tuple[int, int] | None=None, wavelength_elements: int=4, material_aware: bool=True, interface_refinement: float | None=0.7, interface_refinement_width: float | None=None, boundary_refinement: float | None=0.5, boundary_refinement_width: float | None=None, element_order: int=2, quadrature_order: int=4):
+    def mesh(self, *, max_element_size: float | None=None, resolution: tuple[int, int] | None=None, wavelength_elements: int=4, material_aware: bool=True, interface_refinement: float | None=0.7, interface_refinement_width: float | None=None, boundary_refinement: float | None=0.5, boundary_refinement_width: float | None=None, element_order: int=2, quadrature_order: int=DEFAULT_QUADRATURE_ORDER):
         """Build the initial mesh; solve() may subsequently refine it."""
         settings = {'max_element_size': max_element_size, 'resolution': resolution, 'wavelength_elements': wavelength_elements, 'material_aware': material_aware, 'interface_refinement': interface_refinement, 'interface_refinement_width': interface_refinement_width, 'boundary_refinement': boundary_refinement, 'boundary_refinement_width': boundary_refinement_width, 'element_order': element_order, 'quadrature_order': quadrature_order}
         mesh = self._mesh_impl(**settings)

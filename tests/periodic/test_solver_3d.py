@@ -18,7 +18,7 @@ from fem.periodic.assembly_3d import assemble_periodic_system_3d
 from fem.periodic.persistence import load_periodic_h5, save_periodic_h5, validate_periodic_h5
 from fem.periodic.meshing_3d import discretize_3d
 import fem.periodic.solver_3d as solver_3d_module
-from fem.periodic.solver_3d import _dense_candidates
+from fem.periodic.solver_3d import _sparse_candidates
 
 
 FREQUENCY = 10.0e9
@@ -85,7 +85,7 @@ def guide() -> PeriodicModeSolver3D:
 
 @pytest.fixture(scope="module")
 def guide_modes(guide: PeriodicModeSolver3D):
-    return guide.solve(max_refinements=0, direction='all', eigensolver='dense', num_modes=1, neff_guess=1.3)
+    return guide.solve(max_refinements=0, direction='all', eigensolver='sparse', num_modes=1, neff_guess=1.3)
 
 
 def test_nedelec_algebra_periodicity_and_orientation(guide: PeriodicModeSolver3D) -> None:
@@ -100,9 +100,21 @@ def test_nedelec_algebra_periodicity_and_orientation(guide: PeriodicModeSolver3D
     assert system.prolongation.equality_error(full) < 1.0e-12
     assert mesh.periodic_edge_pairs.shape[1] == 3
     for slave, master, sign in mesh.periodic_edge_pairs:
-        assert system.prolongation.representatives[slave] == master
-        assert system.prolongation.signs[slave] == sign
+        left, right = system.basis.edge_dofs[:, slave], system.basis.edge_dofs[:, master]
+        np.testing.assert_array_equal(system.prolongation.representatives[left], right)
+        assert system.prolongation.signs[left[0]] == sign
     assert set(np.unique(mesh.cell_edge_signs)).issubset({-1, 1})
+    # Translate random edge and face coefficients across the seam and compare
+    # the resulting tangential fields at every face quadrature point.
+    from skfem import FacetBasis
+    vertices = mesh.mesh.facets
+    node_map = dict(mesh.periodic_node_pairs)
+    masters = {tuple(sorted(vertices[:, i])): i for i in mesh.boundary_facets["periodic_master"]}
+    for slave in mesh.boundary_facets["periodic_slave"]:
+        master = masters[tuple(sorted(node_map[node] for node in vertices[:, slave]))]
+        traces = [FacetBasis(system.basis.mesh, system.basis.elem, facets=np.array([i]),
+                             dofs=system.basis.dofs, intorder=4).interpolate(full) for i in (slave, master)]
+        np.testing.assert_allclose(traces[0][:2], traces[1][:2], atol=3e-12)
 
     neff = 1.1 - 0.03j
     first = system.gauss0 @ reduced
@@ -297,7 +309,7 @@ def test_diagonal_anisotropic_rectangular_guide_te10(
     )
     cutoff_ratio = np.pi / (WIDTH * guide.k0)
     analytic = np.sqrt(mu[0].real * epsilon[1].real - (mu[0].real / mu[2].real) * cutoff_ratio**2)
-    values, vectors, _, _ = _dense_candidates(system, analytic, 4)
+    values, vectors, _, _ = _sparse_candidates(system, analytic * .999, 4, 1e-10, "cpu")
     mode = vectors[:, 0] / np.linalg.norm(vectors[:, 0])
     assert values[0].real == pytest.approx(analytic, rel=1.0e-2)
     assert abs(values[0].imag) < 1.0e-10

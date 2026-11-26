@@ -253,9 +253,9 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
 
 .. code-block:: python
 
-    ModeSolver1D.add_pml(*, thickness: 'float', order: 'int' = 3, sigma_max: 'float' = 5.0, direction: 'str' = 'all') -> 'PMLSpec'
+    ModeSolver1D.add_pml(*, thickness: "float | Literal['auto']" = 'auto', order: 'int' = 3, sigma_max: 'float' = 5.0, direction: 'str' = 'all') -> 'PMLSpec'
 
-Place a physical transformation-optics PML at selected x ends.
+Add a polynomial PML on selected exterior sides. Auto thickness is one third wavelength.
 
 .. list-table:: Arguments
    :header-rows: 1
@@ -267,10 +267,10 @@ Place a physical transformation-optics PML at selected x ends.
      - Default
      - Meaning
    * - ``thickness``
-     - ``float``
-     - Required
-     - ``—``
-     - PML thickness in metres, at each selected exterior end.
+     - ``float | Literal['auto']``
+     - Optional
+     - ``'auto'``
+     - Thickness in metres inside each selected outer face. Auto uses one third of the free-space wavelength.
    * - ``order``
      - ``int``
      - Optional
@@ -346,7 +346,7 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
 
 .. code-block:: python
 
-    ModeSolver1D.mesh(*, max_element_size: 'float | None' = None, resolution: 'int | None' = None, wavelength_elements: 'int' = 4, material_aware: 'bool' = True, element_order: 'int' = 1, quadrature_order: 'int' = 4)
+    ModeSolver1D.mesh(*, max_element_size: 'float | None' = None, resolution: 'int | None' = None, wavelength_elements: 'int' = 4, material_aware: 'bool' = True, element_order: 'int' = 2, quadrature_order: 'int' = 5)
 
 Build the initial mesh; solve() may subsequently refine it.
 
@@ -382,13 +382,13 @@ Build the initial mesh; solve() may subsequently refine it.
    * - ``element_order``
      - ``int``
      - Optional
-     - ``1``
+     - ``2``
      - Finite-element polynomial order supported by this backend.
    * - ``quadrature_order``
      - ``int``
      - Optional
-     - ``4``
-     - Element integration order.
+     - ``5``
+     - Polynomial integration degree for finite-element assembly. Defaults to five.
 
 Returns: the initial mesh stored in ``mesh_data``.
 
@@ -452,6 +452,47 @@ Solve and return modes with separate algebraic and adaptive controls.
      - Relative discretization-residual stopping threshold.
 
 Returns: the physics-specific result stored in ``result``.
+
+``ModeSolver1D.sweep``
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    ModeSolver1D.sweep(*, frequencies, max_refinements=2, adaptive_tolerance=0.05, **solve_options)
+
+Yield mode sets in increasing frequency order, adapting only at the highest frequency.
+
+.. list-table:: Arguments
+   :header-rows: 1
+   :widths: 16 20 12 16 36
+
+   * - Argument
+     - Type / units
+     - Required / optional
+     - Default
+     - Meaning
+   * - ``frequencies``
+     - ``array-like or scalar``
+     - Required
+     - ``—``
+     - Strictly increasing positive frequencies in hertz.
+   * - ``max_refinements``
+     - ``int``
+     - Optional
+     - ``2``
+     - Maximum mesh refinements after the initial solve; zero means one solve.
+   * - ``adaptive_tolerance``
+     - ``float``
+     - Optional
+     - ``0.05``
+     - Relative discretization-residual stopping threshold.
+   * - ``solve_options``
+     - ``array-like or scalar``
+     - Optional
+     - ``—``
+     - Additional keyword arguments accepted by this solver's solve method.
+
+Returns: an iterator of mode sets in increasing frequency order.
 
 ``ModeSolver1D.show``
 ~~~~~~~~~~~~~~~~~~~~~
@@ -825,9 +866,9 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
 
 .. code-block:: python
 
-    ModeSolver2D.add_pml(*, thickness: 'float', order: 'int' = 3, sigma_max: 'float' = 5.0, direction: 'str' = 'all') -> 'PMLSpec'
+    ModeSolver2D.add_pml(*, thickness: "float | Literal['auto']" = 'auto', order: 'int' = 3, sigma_max: 'float' = 5.0, direction: 'str' = 'all') -> 'PMLSpec'
 
-Add a physical-width uniaxial PML to selected exterior side(s).
+Add a polynomial PML on selected exterior sides. Auto thickness is one third wavelength.
 
 .. list-table:: Arguments
    :header-rows: 1
@@ -839,10 +880,10 @@ Add a physical-width uniaxial PML to selected exterior side(s).
      - Default
      - Meaning
    * - ``thickness``
-     - ``float``
-     - Required
-     - ``—``
-     - PML thickness in metres, at each selected exterior end.
+     - ``float | Literal['auto']``
+     - Optional
+     - ``'auto'``
+     - Thickness in metres inside each selected outer face. Auto uses one third of the free-space wavelength.
    * - ``order``
      - ``int``
      - Optional
@@ -918,7 +959,7 @@ Returns: the configured geometry/excitation handle, or None for in-place configu
 
 .. code-block:: python
 
-    ModeSolver2D.mesh(*, max_element_size: 'float | None' = None, resolution: 'tuple[int, int] | None' = None, wavelength_elements: 'int' = 4, material_aware: 'bool' = True, interface_refinement: 'float | None' = 0.7, interface_refinement_width: 'float | None' = None, boundary_refinement: 'float | None' = 0.5, boundary_refinement_width: 'float | None' = None, element_order: 'int' = 2, quadrature_order: 'int' = 4)
+    ModeSolver2D.mesh(*, max_element_size: 'float | None' = None, resolution: 'tuple[int, int] | None' = None, wavelength_elements: 'int' = 4, material_aware: 'bool' = True, interface_refinement: 'float | None' = 0.7, interface_refinement_width: 'float | None' = None, boundary_refinement: 'float | None' = 0.5, boundary_refinement_width: 'float | None' = None, element_order: 'int' = 2, quadrature_order: 'int' = 5)
 
 Build the initial mesh; solve() may subsequently refine it.
 
@@ -979,8 +1020,8 @@ Build the initial mesh; solve() may subsequently refine it.
    * - ``quadrature_order``
      - ``int``
      - Optional
-     - ``4``
-     - Element integration order.
+     - ``5``
+     - Polynomial integration degree for finite-element assembly. Defaults to five.
 
 Returns: the initial mesh stored in ``mesh_data``.
 
@@ -1069,6 +1110,47 @@ Solve modes, optionally identifying symmetry sectors and tracking fields.
      - Optional partial tracking configuration: symmetry (auto), degeneracy_tolerance (1e-5), overlap_threshold (0.5, squared overlap), and symmetry_tolerance (0.25). Omitted keys use defaults; track_modes=False disables tracking.
 
 Returns: the physics-specific result stored in ``result``.
+
+``ModeSolver2D.sweep``
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    ModeSolver2D.sweep(*, frequencies, max_refinements=2, adaptive_tolerance=0.05, **solve_options)
+
+Yield mode sets in increasing frequency order, adapting only at the highest frequency.
+
+.. list-table:: Arguments
+   :header-rows: 1
+   :widths: 16 20 12 16 36
+
+   * - Argument
+     - Type / units
+     - Required / optional
+     - Default
+     - Meaning
+   * - ``frequencies``
+     - ``array-like or scalar``
+     - Required
+     - ``—``
+     - Strictly increasing positive frequencies in hertz.
+   * - ``max_refinements``
+     - ``int``
+     - Optional
+     - ``2``
+     - Maximum mesh refinements after the initial solve; zero means one solve.
+   * - ``adaptive_tolerance``
+     - ``float``
+     - Optional
+     - ``0.05``
+     - Relative discretization-residual stopping threshold.
+   * - ``solve_options``
+     - ``array-like or scalar``
+     - Optional
+     - ``—``
+     - Additional keyword arguments accepted by this solver's solve method.
+
+Returns: an iterator of mode sets in increasing frequency order.
 
 ``ModeSolver2D.show``
 ~~~~~~~~~~~~~~~~~~~~~

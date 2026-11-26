@@ -4,11 +4,12 @@ from __future__ import annotations
 from dataclasses import fields, dataclass, is_dataclass
 from importlib import import_module
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 import numpy as np
 
 from .errors import ConfigurationError, NoResultError
+from .pml import PMLSpec
 from .validation import real_array, connectivity
 
 
@@ -126,6 +127,24 @@ class SolverMixin:
 
 
 class ElectromagneticSolverMixin(SolverMixin):
+    def add_pml(
+        self, *, thickness: float | Literal["auto"] = "auto", order: int = 3,
+        sigma_max: float = 5.0, direction: str = "all",
+    ) -> PMLSpec:
+        """Add a polynomial PML on selected exterior sides. Auto thickness is one third wavelength."""
+        width = self.wavelength / 3 if isinstance(thickness, str) and thickness == "auto" else thickness
+        direction = str(direction).strip().lower()
+        if direction == "both":
+            direction = "all"
+        if self._pml_axes == "x":
+            direction = {"all": "x", "left": "x-", "right": "x+"}.get(direction, direction)
+        spec = PMLSpec(width, order, sigma_max, direction)
+        spec.sides(self._pml_axes)
+        return self._add_pml_spec(spec)
+
+    def _add_pml_spec(self, spec):
+        return self.geometry.add_pml(spec)
+
     @property
     def wavelength(self):
         """Free-space wavelength in metres, derived from frequency in hertz."""
@@ -138,7 +157,7 @@ class ResultMixin:
     # public solve report just because its name starts with "solver".
     _diagnostic_keys = frozenset({
         "adaptive_history", "adaptive_residual", "adaptive_converged",
-        "max_refinements", "adaptive_tolerance", "backend", "eigensolver",
+        "max_refinements", "adaptive_tolerance", "mesh_adaptation_frequency", "backend", "eigensolver",
         "method", "methods", "candidate_count", "neff_guess",
         "requested_direction", "residual_tolerance", "divergence_tolerance",
     })

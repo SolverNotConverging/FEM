@@ -99,7 +99,7 @@ def test_clean_break_removes_obsolete_solver_workflows() -> None:
     for package, names in {
         "fem.waveguide": ("ModeSolver1D", "ModeSolver2D"),
         "fem.periodic": ("PeriodicModeSolver2D", "PeriodicModeSolver3D"),
-        "fem.scattering": ("ScatteringSolver2D",),
+        "fem.scattering": ("ScatteringSolver2D", "ScatteringSolver3D"),
         "fem.electrostatics": ("ElectrostaticSolver",),
     }.items():
         module = __import__(package, fromlist=names)
@@ -131,12 +131,18 @@ def test_every_solver_shares_one_workflow():
     import fem
 
     solvers = (fem.ElectrostaticSolver, fem.ModeSolver1D, fem.ModeSolver2D, fem.PeriodicModeSolver2D,
-               fem.PeriodicModeSolver3D, fem.ScatteringSolver2D)
+               fem.PeriodicModeSolver3D, fem.ScatteringSolver2D, fem.ScatteringSolver3D, fem.AntennaSolver3D)
     for solver in solvers:
         for name in ("mesh", "solve", "show"):
             assert hasattr(solver, name), (solver.__name__, name)
+        mesh = inspect.signature(solver.mesh).parameters
+        assert mesh["element_order"].default == 2
+        assert mesh["quadrature_order"].default == 5
+        solve = inspect.signature(solver.solve).parameters
+        assert solve["max_refinements"].default == 2
+        assert solve["adaptive_tolerance"].default == .05
     results = (fem.ElectrostaticResult, fem.ModeSet, fem.PeriodicModeSet, fem.PeriodicSweepResult,
-               fem.ScatteringResult, fem.ScatteringSweepResult)
+               fem.ScatteringResult, fem.AntennaResult, fem.AntennaSweep)
     for result in results:
         for name in ("plot", "show", "save", "solve_info"):
             assert hasattr(result, name), (result.__name__, name)

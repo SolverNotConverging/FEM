@@ -6,11 +6,10 @@ solver = fem.ModeSolver2D(
     x_range=(0., 20e-3),
     y_range=(0., 20e-3),
 )
-solver.mesh(max_element_size=1e-3, element_order=2)
 modes = solver.solve(
     num_modes=24,
     track_modes=True,
-    max_refinements=0,
+    max_refinements=2,
     backend="cpu",
 )
 

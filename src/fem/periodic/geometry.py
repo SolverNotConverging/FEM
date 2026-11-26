@@ -15,8 +15,9 @@ from typing import Protocol
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from .exceptions import ConfigurationError, GeometryError
+from .exceptions import GeometryError
 from fem.common.diagonal import DiagonalMaterial
+from fem.common.pml import PMLSpec
 
 
 def physical_span(value: float | Sequence[float], name: str) -> tuple[float, float]:
@@ -241,32 +242,33 @@ class MeshRefinement:
             raise GeometryError("max_element_size must be finite and positive.")
 
 
-@dataclass(frozen=True, slots=True)
-class PMLSpec:
-    thickness: float
-    order: int = 3
-    sigma_max: float = 5.0
-    direction: str = "x"
-
-    def __post_init__(self) -> None:
-        if not np.isfinite(self.thickness) or self.thickness <= 0.0:
-            raise ConfigurationError("PML thickness must be finite and positive.")
-        if isinstance(self.order, bool) or int(self.order) != self.order or self.order < 1:
-            raise ConfigurationError("PML order must be a positive integer.")
-        if not np.isfinite(self.sigma_max) or self.sigma_max < 0.0:
-            raise ConfigurationError("PML sigma_max must be finite and nonnegative.")
-        if self.direction not in ("x-", "x+", "x", "y-", "y+", "y", "all"):
-            raise ConfigurationError("invalid transverse PML direction.")
-
-    def stretch(self, depth: ArrayLike) -> NDArray[np.complex128]:
-        values = np.clip(np.asarray(depth, dtype=float), 0.0, self.thickness)
-        return np.asarray(
-            1.0 - 1j * self.sigma_max * (values / self.thickness) ** self.order,
-            dtype=np.complex128,
-        )
 
 
 class _GeometryBase:
+    @staticmethod
+    def _is_vacuum(material):
+        return material.eps_r == (1, 1, 1) and material.mu_r == (1, 1, 1)
+
+    def _check_pml_overlap(self, shape, specs):
+        axes = "xy" if hasattr(self, "y_span") else "x"
+        for spec in specs:
+            for side in spec.sides(axes):
+                index = axes.index(side[0])
+                lo, hi = getattr(self, side[0] + "_span")
+                a, b = shape.bounds[2 * index : 2 * index + 2]
+                if ((side[1] == "-" and a <= lo + spec.thickness)
+                        or (side[1] == "+" and b >= hi - spec.thickness)):
+                    raise GeometryError(f"The {side} periodic PML requires vacuum clearance from material and conductors.")
+
+    def _check_pml_vacuum(self, spec):
+        if not self._is_vacuum(self.background):
+            raise GeometryError("The periodic PML requires a vacuum background.")
+        for region in self.regions:
+            if not self._is_vacuum(region.material):
+                self._check_pml_overlap(region.shape, (spec,))
+        for boundary in self.boundaries:
+            self._check_pml_overlap(boundary.shape, (spec,))
+
     def __init__(self, background: DiagonalMaterial) -> None:
         self.background = background
         self.regions: list[Region] = []
@@ -322,6 +324,8 @@ class GeometryModel2D(_GeometryBase):
         return bounds[0] >= self.x_span[0] and bounds[1] <= self.x_span[1] and bounds[2] >= self.z_span[0] and bounds[3] <= self.z_span[1]
 
     def add_region(self, shape: Shape2D, material: DiagonalMaterial, *, name: str | None = None) -> Region:
+        if not self._is_vacuum(material):
+            self._check_pml_overlap(shape, self.pmls)
         if not self._inside(shape.bounds):
             raise GeometryError("Material region lies outside the periodic cell; split seam-crossing geometry explicitly.")
         identifier, selected = self._identity(name, "region")
@@ -331,6 +335,7 @@ class GeometryModel2D(_GeometryBase):
         return result
 
     def add_boundary(self, shape: Shape2D, kind: str, *, name: str | None = None) -> BoundaryRegion:
+        self._check_pml_overlap(shape, self.pmls)
         normalized = str(kind).strip().lower()
         if normalized not in ("pec", "pmc"):
             raise GeometryError("internal boundary kind must be 'pec' or 'pmc'.")
@@ -364,6 +369,7 @@ class GeometryModel2D(_GeometryBase):
                 widths[side] = pml.thickness
         if widths.get("x-", 0.0) + widths.get("x+", 0.0) >= self.x_span[1] - self.x_span[0]:
             raise GeometryError("The x PMLs leave no physical interior.")
+        self._check_pml_vacuum(spec)
         self.pmls.append(spec)
         self._changed()
         return spec
@@ -432,6 +438,8 @@ class GeometryModel3D(_GeometryBase):
     def add_region(
         self, shape: Shape3D, material: DiagonalMaterial, *, name: str | None = None
     ) -> Region:
+        if not self._is_vacuum(material):
+            self._check_pml_overlap(shape, self.pmls)
         if not self._inside(shape.bounds):
             raise GeometryError(
                 "Material region lies outside the periodic cell; split "
@@ -446,6 +454,7 @@ class GeometryModel3D(_GeometryBase):
     def add_boundary(
         self, shape: Shape3D, kind: str, *, name: str | None = None
     ) -> BoundaryRegion:
+        self._check_pml_overlap(shape, self.pmls)
         normalized = str(kind).strip().lower()
         if normalized not in ("pec", "pmc"):
             raise GeometryError("internal boundary kind must be 'pec' or 'pmc'.")
@@ -474,26 +483,16 @@ class GeometryModel3D(_GeometryBase):
         self._changed()
         return result
 
-    @staticmethod
-    def _pml_sides(direction: str) -> set[str]:
-        if direction == "x":
-            return {"x-", "x+"}
-        if direction == "y":
-            return {"y-", "y+"}
-        if direction == "all":
-            return {"x-", "x+", "y-", "y+"}
-        return {direction}
-
     def add_pml(self, spec: PMLSpec) -> PMLSpec:
-        requested = self._pml_sides(spec.direction)
+        requested = set(spec.sides("xy"))
         occupied = {
-            side for pml in self.pmls for side in self._pml_sides(pml.direction)
+            side for pml in self.pmls for side in pml.sides("xy")
         }
         if requested & occupied:
             raise GeometryError("A PML already covers one of the requested boundaries.")
         widths = {side: spec.thickness for side in requested}
         for pml in self.pmls:
-            for side in self._pml_sides(pml.direction):
+            for side in pml.sides("xy"):
                 widths[side] = pml.thickness
         if widths.get("x-", 0.0) + widths.get("x+", 0.0) >= (
             self.x_span[1] - self.x_span[0]
@@ -503,6 +502,7 @@ class GeometryModel3D(_GeometryBase):
             self.y_span[1] - self.y_span[0]
         ):
             raise GeometryError("The y PMLs leave no physical interior.")
+        self._check_pml_vacuum(spec)
         self.pmls.append(spec)
         self._changed()
         return spec
@@ -536,7 +536,7 @@ class GeometryModel3D(_GeometryBase):
         sx = np.ones(xa.shape, dtype=np.complex128)
         sy = np.ones(xa.shape, dtype=np.complex128)
         for pml in self.pmls:
-            sides = self._pml_sides(pml.direction)
+            sides = pml.sides("xy")
             if "x-" in sides:
                 sx *= pml.stretch(
                     np.maximum(self.x_span[0] + pml.thickness - xa, 0.0)
@@ -560,7 +560,7 @@ class GeometryModel3D(_GeometryBase):
         xa, ya = np.broadcast_arrays(np.asarray(x, float), np.asarray(y, float))
         result = np.zeros(xa.shape, dtype=bool)
         for pml in self.pmls:
-            sides = self._pml_sides(pml.direction)
+            sides = pml.sides("xy")
             if "x-" in sides:
                 result |= xa < self.x_span[0] + pml.thickness
             if "x+" in sides:

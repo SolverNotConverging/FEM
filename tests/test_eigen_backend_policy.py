@@ -7,7 +7,7 @@ from fem.common import gpu, _gpu_arnoldi as hybrid
 from fem.common.errors import BackendCapabilityError
 
 
-FAMILIES = ['waveguide_1d', 'waveguide_2d', 'periodic_te', 'periodic_tm', 'periodic_3d', 'port_modes']
+FAMILIES = ['waveguide_1d', 'waveguide_2d', 'periodic_te', 'periodic_tm', 'periodic_3d']
 
 
 def make_solver(family, mesh):
@@ -32,10 +32,6 @@ def make_solver(family, mesh):
         solver = fem.PeriodicModeSolver3D(frequency=c, x_range=1., y_range=.5, z_range=.5)
         if mesh:
             solver.mesh(max_element_size=.3)
-    else:
-        solver = fem.ScatteringSolver2D(frequency=c, x_range=1., z_range=(-1., 1.), boundary=fem.materials.PEC)
-        options['num_elements'] = 16
-        return solver, solver.solve_modes, options
     return solver, solver.solve, options
 
 
@@ -67,8 +63,7 @@ def test_auto_warns_and_completes_cpu_eigenproblem(monkeypatch, family, missing)
     with pytest.warns(RuntimeWarning, match='falling back to CPU') as captured:
         result = solve(backend='auto', **options)
     assert len(captured) == 1
-    selected = (result.solve_info['backend'] if family == 'port_modes' else
-                result.metadata['backend'] if family.startswith('periodic') else result.backend)
+    selected = (result.metadata['backend'] if family.startswith('periodic') else result.backend)
     assert selected == 'cpu'
     assert len(result) == 1 and np.isfinite(result[0].neff)
     assert result[0].residual < 1e-8

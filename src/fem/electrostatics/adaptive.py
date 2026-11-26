@@ -1,4 +1,4 @@
-"""Flux-jump indicators and conforming local refinement for P1 electrostatics."""
+"""Flux-jump indicators and conforming local refinement for electrostatics."""
 
 from dataclasses import replace
 
@@ -8,7 +8,7 @@ from .meshing import FEMMesh, _mesh_extrema
 
 
 def flux_indicators(mesh: FEMMesh, displacement: np.ndarray, charge: np.ndarray,
-                    fixed: np.ndarray) -> tuple[np.ndarray, float]:
+                    fixed: np.ndarray, corner_displacement=None) -> tuple[np.ndarray, float]:
     """Estimate discretization error from div(D)=rho and normal-flux jumps.
 
     The relative indicator is normalized by the elementwise L2 norm of D.
@@ -26,6 +26,10 @@ def flux_indicators(mesh: FEMMesh, displacement: np.ndarray, charge: np.ndarray,
             np.linalg.norm(points[:, i] - points[:, j], axis=1)
             for i, j in ((0, 1), (1, 2), (2, 0))
         ])
+    if corner_displacement is not None:
+        gradients = np.linalg.solve(points[:, 1:] - points[:, :1],
+                                    corner_displacement[:, 1:] - corner_displacement[:, :1])
+        charge = charge - np.trace(gradients, axis1=1, axis2=2)
     squared = h**2 * measures * charge**2
     adjacent = native.f2t
     first, second = adjacent
@@ -44,17 +48,29 @@ def flux_indicators(mesh: FEMMesh, displacement: np.ndarray, charge: np.ndarray,
         face_measure = np.linalg.norm(edges, axis=1)
         face_h = face_measure
         normals = np.column_stack((-edges[:, 1], edges[:, 0])) / face_measure[:, None]
-    jump = np.zeros(len(facets))
-    jump[interior] = np.sum(
-        (displacement[first[interior]] - displacement[second[interior]]) * normals[interior], axis=1
-    )
-    # Unconstrained exterior faces have homogeneous natural flux conditions.
-    jump[boundary] = np.sum(displacement[first[boundary]] * normals[boundary], axis=1)
-    contribution = face_h * face_measure * jump**2
+    def normal_flux(cells, selected):
+        if corner_displacement is None:
+            return np.sum(displacement[cells] * normals[selected], axis=-1)[:, None]
+        local = (mesh.elements[cells, None, :] == facets[selected, :, None]).argmax(axis=2)
+        trace = corner_displacement[cells[:, None], local]
+        return np.sum(trace * normals[selected, None, :], axis=-1)
+
+    left_flux = normal_flux(first, np.arange(len(first)))
+    jumps = left_flux.copy()
+    jumps[interior] -= normal_flux(second[interior], np.flatnonzero(interior))
+    # Exact mean square of the linear normal trace on a segment (or a point in 1D).
+    squared_jump = (jumps[:, 0]**2 + jumps[:, 0]*jumps[:, -1] + jumps[:, -1]**2) / 3
+    contribution = face_h * face_measure * squared_jump
     np.add.at(squared, first[interior], 0.5 * contribution[interior])
     np.add.at(squared, second[interior], 0.5 * contribution[interior])
     np.add.at(squared, first[boundary], contribution[boundary])
-    scale = float(np.sum(measures * np.sum(displacement**2, axis=1)))
+    if corner_displacement is None:
+        density = np.sum(displacement**2, axis=1)
+    else:
+        vertices = points.shape[1]
+        density = (np.sum(corner_displacement**2, axis=(1, 2))
+                   + np.sum(corner_displacement.sum(axis=1)**2, axis=1)) / (vertices * (vertices + 1))
+    scale = float(measures @ density)
     relative = np.sqrt(float(np.sum(squared)) / max(scale, np.finfo(float).tiny))
     return squared, float(relative)
 

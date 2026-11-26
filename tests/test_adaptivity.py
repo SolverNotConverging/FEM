@@ -11,9 +11,6 @@ from scipy.constants import c
 from fem.adaptivity import run_adaptive, validate_controls
 from fem.waveguide import ModeSolver1D, ModeSolver2D
 from fem.periodic import PeriodicModeSolver2D, PeriodicModeSolver3D
-from fem.scattering.materials import ScalarMaterial
-from fem.scattering.modes import CrossSection, ModeSolver
-from fem.scattering.scattering import ScatteringSolver2D
 from fem.common.errors import ConfigurationError as WaveConfigurationError
 
 
@@ -24,16 +21,48 @@ def modal_case(kind):
         return ModeSolver2D(frequency=c, x_range=1.0, y_range=0.5), {"num_modes": 1, "neff_guess": .85}
     if kind == "periodic":
         return PeriodicModeSolver2D(frequency=c, x_range=1.0, z_range=0.25, polarization='TE'), {"num_modes": 1, "neff_guess": .85}
-    return ModeSolver(CrossSection(x_span=(0., 1.), background=ScalarMaterial(), boundary="pec"),
-                      wavelength=1., num_elements=8), {"num_modes": 1, "neff_guess": .85}
 
 
 def diagnostics(result):
     return result.metadata if hasattr(result, "metadata") else result.solve_info
 
 
+def test_periodic_tm_measures_electric_flux_jump():
+    solver = PeriodicModeSolver2D(frequency=c, x_range=1., z_range=.25, polarization="TM",
+                                  boundary=materials.PMC)
+    solver.mesh(max_element_size=.2)
+    result = solver.solve(backend="cpu", num_modes=1, neff_guess=.85,
+                          max_refinements=1, adaptive_tolerance=1e-8)
+    first, last = result.metadata["adaptive_history"]
+    assert first["residual"] > 1e-4
+    assert last["elements"] > first["elements"]
+    assert last["residual"] < first["residual"]
+
+
 @pytest.mark.gmsh
-@pytest.mark.parametrize("kind", ["scalar", "vector", "periodic", "lead"])
+@pytest.mark.parametrize("kind", ["scalar", "vector", "periodic", "periodic3d"])
+def test_modal_sweep_reuses_high_frequency_mesh(kind, capsys):
+    if kind == "periodic3d":
+        solver = PeriodicModeSolver3D(frequency=c, x_range=1., y_range=.5, z_range=.25)
+        options = {"num_modes": 1, "neff_guess": .85}
+    else:
+        solver, options = modal_case(kind)
+    low, high = solver.sweep(frequencies=[.95 * c, 1.05 * c], max_refinements=1,
+                             adaptive_tolerance=1e-9, backend="cpu", **options)
+    assert solver.frequency == c
+    assert high.solve_info["max_refinements"] == 1
+    assert low.solve_info["max_refinements"] == 0
+    assert low.solve_info["mesh_adaptation_frequency"] == high.frequency
+    np.testing.assert_array_equal(low.mesh_data.elements, high.mesh_data.elements)
+    np.testing.assert_array_equal(low.mesh_data.coordinates, high.mesh_data.coordinates)
+    assert low[0].beta != high[0].beta
+    output = capsys.readouterr().err
+    assert "Frequency sweep" in output and "2/2" in output
+    assert "elements=" in output and "residual=" in output and "tolerance=" in output
+
+
+@pytest.mark.gmsh
+@pytest.mark.parametrize("kind", ["scalar", "vector", "periodic"])
 def test_default_budget_refines_coarse_modes_and_reduces_residual(kind):
     solver, options = modal_case(kind)
     coarse = solver.solve(max_refinements=0, adaptive_tolerance=1e-5, **options)
@@ -72,41 +101,6 @@ def test_3d_periodic_coarse_start_regenerates_valid_constraints():
     np.testing.assert_allclose(nodes[pairs[:, 0], :2], nodes[pairs[:, 1], :2], atol=1e-12)
 
 
-def scattering_case(contrast=0.):
-    simulation = ScatteringSolver2D(frequency=299792458.0 / 1.0, x_range=(0.0, 0.5), z_range=(-2.0, 2.0), boundary=materials.PEC)
-    if contrast:
-        simulation.add_rectangle(x_range=(0.0, 0.5), z_range=(-0.3, 0.3), material=materials.Material(epsilon=1.0 + contrast, mu=1.0))
-    simulation.add_pml(thickness=0.5, direction='z')
-    return simulation
-
-
-@pytest.mark.gmsh
-def test_uniform_scattering_auto_setup_stops_on_threshold():
-    simulation = scattering_case()
-    result = simulation.solve()
-    assert result.solve_info["adaptive_converged"]
-    assert len(result.solve_info["adaptive_history"]) == 1
-    assert result.reflection < 1e-10
-    assert result.transmission == pytest.approx(1., abs=1e-7)
-    assert simulation.modes.solve_info["max_refinements"] == 2
-
-
-@pytest.mark.gmsh
-def test_scattering_refinement_budget_and_final_persistence(tmp_path):
-    from fem import load
-    simulation = scattering_case(.5)
-    result = simulation.solve(max_refinements=1, adaptive_tolerance=1e-6)
-    result.save(tmp_path / "adapted.h5")
-    history = result.solve_info["adaptive_history"]
-    assert len(history) == 2
-    assert history[-1]["elements"] > history[0]["elements"]
-    assert history[-1]["residual"] < history[0]["residual"]
-    assert not result.solve_info["adaptive_converged"]
-    stored = load(tmp_path / "adapted.h5")
-    np.testing.assert_allclose(stored.E_total, result.E_total)
-    np.testing.assert_array_equal(stored.scene.triangles, result.scene.triangles)
-
-
 @pytest.mark.parametrize("value", [-1, 1.5, np.nan, np.inf, True, np.bool_(True), "2", [], 1j])
 def test_invalid_refinement_budget(value):
     with pytest.raises(ValueError, match="max_refinements"):
@@ -127,7 +121,7 @@ def test_manual_refinement_after_adaptation_retains_fine_intervals():
     assert np.diff(refined.nodes).max() <= previous_minimum / 2 * (1 + 1e-12)
 
 
-@pytest.mark.parametrize("kind", ["scalar", "vector", "periodic", "lead"])
+@pytest.mark.parametrize("kind", ["scalar", "vector", "periodic"])
 def test_public_controls_are_validated_before_solving(kind):
     solver, options = modal_case(kind)
     with pytest.raises((ValueError, WaveConfigurationError), match="max_refinements"):
