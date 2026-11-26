@@ -9,7 +9,15 @@ COMPONENTS = ("incident", "total", "scattered", "RCS")
 
 def field_views(result):
     if result.dimension == 3:
-        return [*COMPONENTS, *(["Surface current"] if result.current_facets is not None else [])]
+        views = []
+        for field in COMPONENTS[:-1]:
+            views.append(f"{field.capitalize()} E")
+            if field == "incident" or result.scattered_h is not None:
+                views.append(f"{field.capitalize()} H")
+        views.append("RCS")
+        if result.current_facets is not None:
+            views.append("Surface current")
+        return views
     fields = ("Et", "Hz") if result.polarization == "TE" else ("Ez", "Ht")
     return [f"{name.capitalize()} {field}" for name in COMPONENTS[:-1] for field in fields
             if field.endswith("z") or result.scattered_transverse is not None] + ["RCS"]
@@ -53,8 +61,11 @@ def draw_3d(plotter, result, component, quantity, *, mesh_overlay=False, materia
         values, label, title = vectors.T, "|Js| (A/m)", component
     else:
         centers = mesh.coordinates[mesh.elements].mean(axis=1)
-        values, label = getattr(result, component).T, "|E| (V/m)"
-        title = f"{component.capitalize()} electric field"
+        field, symbol = component.split()
+        name = field.lower() if symbol == "E" else f"{field.lower()}_h"
+        values = getattr(result, name).T
+        label = "|E| (V/m)" if symbol == "E" else "|H| (A/m)"
+        title = component
     if quantity == "magnitude":
         values = aligned_components(values)
     add_arrows(plotter, centers, values, quantity, label=label)
@@ -67,8 +78,8 @@ def plot_result(result, *, component, quantity):
         component = "RCS"
     views = field_views(result)
     longitudinal = "Hz" if result.polarization == "TE" else "Ez"
-    if result.dimension == 2 and component in COMPONENTS[:-1]:
-        component = f"{component.capitalize()} {longitudinal}"
+    if component in COMPONENTS[:-1]:
+        component = f"{component.capitalize()} {longitudinal if result.dimension == 2 else 'E'}"
     if component is not None and component not in views:
         raise ConfigurationError(f"Available views: {', '.join(views)}.")
     if component != "RCS" and quantity not in ("real", "imag", "magnitude"):
@@ -76,7 +87,7 @@ def plot_result(result, *, component, quantity):
     if result.dimension == 3:
         import pyvista as pv
         plotter = pv.Plotter()
-        draw_3d(plotter, result, component or "total", quantity)
+        draw_3d(plotter, result, component or "Total E", quantity)
         return plotter
 
     from matplotlib.figure import Figure

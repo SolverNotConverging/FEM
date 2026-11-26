@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from fem.common.constants import C_0
+from fem.common.constants import C_0, ETA_0
 from fem.common.contracts import MeshSnapshot, ResultMixin
 from fem.common.errors import ConfigurationError
 from fem.common.validation import real_array
@@ -12,7 +12,7 @@ from fem.common.validation import real_array
 
 @dataclass
 class ScatteringResult(ResultMixin):
-    """2D nodal Hz/Ez and cell-centred Et/Ht, or 3D cell-centred vector E."""
+    """2D nodal Hz/Ez and cell-centred Et/Ht, or 3D cell-centred E and H vectors."""
     frequency: float
     polarization: str
     direction: np.ndarray
@@ -27,6 +27,19 @@ class ScatteringResult(ResultMixin):
     surface_current_vertices: np.ndarray | None = None
     incident_transverse: np.ndarray | None = None
     scattered_transverse: np.ndarray | None = None
+    scattered_h: np.ndarray | None = None
+
+    @property
+    def incident_h(self):
+        """Incident magnetic field at physical tetrahedron centres, in A/m."""
+        if self.dimension == 3:
+            return np.cross(self.direction, self.incident) / ETA_0
+
+    @property
+    def total_h(self):
+        """Total magnetic field at physical tetrahedron centres, in A/m."""
+        if self.scattered_h is not None:
+            return self.incident_h + self.scattered_h
 
     @property
     def total_transverse(self):
@@ -80,8 +93,10 @@ class ScatteringResult(ResultMixin):
         from .visualization import rcs_surface
 
         grid = _tetra_grid(self.mesh_data)
-        for name in ("incident", "scattered", "total"):
+        for name in ("incident", "scattered", "total", "incident_h", "scattered_h", "total_h"):
             value = getattr(self, name)
+            if value is None:
+                continue
             grid.cell_data[f"{name}_real"] = value.real
             grid.cell_data[f"{name}_imag"] = value.imag
             grid.cell_data[f"{name}_magnitude"] = np.linalg.norm(value, axis=1)

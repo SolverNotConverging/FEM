@@ -656,7 +656,7 @@ Plot a field such as 'Total Et' (TE) or 'Incident Ez' (TM), or 'RCS'.
      - ``str | None``
      - Optional
      - ``None``
-     - 2D TE: incident, total or scattered Et/Hz (e.g. 'Total Et'); TM: Ez/Ht. 3D: incident, total, scattered or Surface current. RCS in either dimension.
+     - Incident, total or scattered field. Choose Et/Hz for 2D TE, Ez/Ht for 2D TM, or E/H in 3D (e.g. 'Total H'). RCS in either dimension, or Surface current on a 3D conductor.
    * - ``quantity``
      - ``str``
      - Optional

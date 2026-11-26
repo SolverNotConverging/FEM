@@ -178,7 +178,7 @@ def render_references():
                 "backend": "SciPy CPU or NVIDIA cuDSS (gpu or hybrid). Auto probes cuDSS.",
                 "quantity": "Real part, imaginary part, or magnitude.",
                 "path": "HDF5 result path for save, or .vtm path for export_vtk.",
-                "component": "2D TE: incident, total or scattered Et/Hz (e.g. 'Total Et'); TM: Ez/Ht. 3D: incident, total, scattered or Surface current. RCS in either dimension.",
+                "component": "Incident, total or scattered field. Choose Et/Hz for 2D TE, Ez/Ht for 2D TM, or E/H in 3D (e.g. 'Total H'). RCS in either dimension, or Surface current on a 3D conductor.",
                 "material": "Isotropic bulk material, PEC, surface impedance or good conductor.",
             }
             returns = {"mesh": "the physical mesh", "solve": "a ScatteringResult",

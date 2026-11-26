@@ -239,14 +239,21 @@ class _PlaneWaveSolver(RadiationBoxSolver):
                                          incident, incident_derivative)
         positions, current, moment = _monitor_sources(basis, self._surface, coeff, k, quadrature)
         incident_transverse = scattered_transverse = None
+        scattered_h = None
         if vector:
             # Sample both phasors at the glyph location. For a quadratic
             # vector field its centroid value differs from its cell mean.
             sample = Basis(mesh, element, elements=basis.tind, dofs=basis.dofs,
                            quadrature=(np.full((3, 1), .25), np.array([1 / 6])), disable_doflocs=True)
-            scattered = np.asarray(sample.interpolate(coeff))[:, :, 0].T.copy()
+            field = sample.interpolate(coeff)
+            scattered = np.asarray(field)[:, :, 0].T.copy()
             centers = self.mesh_data.coordinates[self.mesh_data.elements].mean(axis=1).T
             incoming = phase(centers)[:, None] * self.electric_vector
+            # Faraday's law applies to total E with the local permeability.
+            # The incident plane wave is defined in vacuum throughout the mesh.
+            incident_h = np.cross(self.direction, incoming) / ETA_0
+            scattered_h = (1j / (k * ETA_0) * field.curl[:, :, 0].T
+                           + (1 - mu[:, None]) * incident_h) / mu[:, None]
         else:
             physical_points = self.mesh_data.coordinates
             scattered, incoming = coeff[:len(physical_points)].copy(), phase(physical_points.T)
@@ -275,7 +282,8 @@ class _PlaneWaveSolver(RadiationBoxSolver):
                                                 "electric_vector": self.electric_vector.copy() if vector else None,
                                                 "method": "scipy-direct" if selected == "cpu" else "cudss-direct"},
                                        current_facets=current_facets, surface_current_vertices=current_vertices,
-                                       incident_transverse=incident_transverse, scattered_transverse=scattered_transverse)
+                                       incident_transverse=incident_transverse, scattered_transverse=scattered_transverse,
+                                       scattered_h=scattered_h)
         return self.result
 
 

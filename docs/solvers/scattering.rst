@@ -56,14 +56,19 @@ available as ``incident_transverse``, ``total_transverse`` and ``scattered_trans
 
 The 3D solver uses Nédélec edge elements. The incident E vector
 is linearly polarized, transverse to propagation, and normalized to 1 V/m.
-The field arrays have shape (tetrahedra, 3) and sample the electric field at
-cell centres. Select incident, total or scattered in the shared viewer to see
-electric-field arrows. Real and imaginary views orient the arrows by that
-phasor part. Magnitude uses a global phase reference. Colour gives the full
-vector magnitude in V/m. Select RCS to display the radial surface. The mesh
+The viewer offers E (V/m) and H (A/m) arrows for the incident, total and
+scattered fields. For example, select **Total H** or call
+``result.plot(component="Total H", quantity="real")``. Each complex array has
+shape (tetrahedra, 3) and samples the field at physical cell centres.
+``incident``, ``total`` and ``scattered`` hold E, and ``incident_h``,
+``total_h`` and ``scattered_h`` hold H. The solver recovers total H from the
+curl of total E using each cell's permeability. Real and imaginary views
+orient the arrows by that phasor part. Magnitude uses a global phase
+reference. Colour gives the full vector magnitude. Select RCS to display the radial surface. The mesh
 and material toggles overlay the geometry in spatial field views. In ParaView,
 open the VTM collection and select the fields or RCS block. Real and imaginary
-Cartesian vectors and their magnitudes are available for each field. Keep
+Cartesian vectors and their magnitudes are available for each field, for
+example ``total_real`` for E and ``total_h_real`` for H. Keep
 the accompanying dataset directory with the VTM file.
 
 Materials and accuracy

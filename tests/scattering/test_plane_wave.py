@@ -122,6 +122,11 @@ def test_vacuum_plane_wave(dim):
     wave = np.exp(-2j*np.pi*(points @ direction))
     expected = wave if dim == 2 else wave[:,None] * solver.electric_vector
     np.testing.assert_allclose(r.total, expected)
+    if dim == 3:
+        expected_h = np.cross(direction, expected) / ETA_0
+        np.testing.assert_allclose(r.incident_h, expected_h)
+        np.testing.assert_allclose(r.total_h, expected_h)
+        np.testing.assert_array_equal(r.scattered_h, 0)
     np.testing.assert_array_equal(r.scattered, 0)
     np.testing.assert_array_equal(r.radar_cross_section(-direction), 0)
 
@@ -138,6 +143,33 @@ def test_adaptive_dielectric_mesh_budget_and_orders():
     assert history[-1]["residual"] < history[0]["residual"]
     assert result.mesh_data.info["quadrature_order"] == 6
     assert result.mesh_data.info["element_order"] == 1
+
+
+def test_magnetic_field_matches_conductor_current_inside_magnetic_material():
+    outer = (-.62, .62)
+    solver = fem.ScatteringSolver3D(frequency=fem.C_0, x_range=outer, y_range=outer,
+                                    z_range=outer, pml_layers=2)
+    mu = 1.7 - .06j
+    solver.add_geometry(shape=fem.shapes.Box(bounds=((-0.15, 0.15),)*3),
+                        material=fem.Material(mu=mu))
+    solver.add_geometry(shape=fem.shapes.Box(bounds=((-0.06, 0.06),)*3), material=fem.materials.PEC)
+    solver.mesh(max_element_size=.18, element_order=1)
+    result = solver.solve(backend="cpu", max_refinements=0)
+    mesh = solver._mesh
+    facets = solver._faces[2]
+    owners = mesh.f2t[0, facets]
+    corners = mesh.p[:, mesh.facets[:, facets]].transpose(2, 1, 0)
+    centers = mesh.p[:, mesh.t[:, owners]].mean(axis=1).T
+    normal = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
+    normal *= np.sign(np.sum(normal * (centers - corners[:, 0]), axis=1))[:, None]
+    normal /= np.linalg.norm(normal, axis=1)[:, None]
+    # At order one curl(E_scat) is constant in each tetrahedron. Only the
+    # analytical incident contribution changes from the centroid to a corner.
+    phase_shift = np.exp(-2j*np.pi*((corners - centers[:, None]) @ result.direction))
+    delta_h = (phase_shift - 1)[:, :, None] * result.incident_h[owners, None] / mu
+    wall_h = result.total_h[owners, None] + delta_h
+    np.testing.assert_allclose(np.cross(normal[:, None], wall_h), result.surface_current_vertices,
+                               rtol=1e-10, atol=1e-13)
 
 
 def test_scalar_plot_and_roundtrip(tmp_path):
@@ -229,19 +261,24 @@ def test_shared_viewer_switches_fields_and_rcs(dim, polarization, tmp_path):
     result = solver.solve(backend="cpu", max_refinements=0)
     viewer = fem.show(result.save(tmp_path/"case.h5"), block=False)
     try:
-        symbols = ("Et", "Hz") if polarization == "TE" else ("Ez", "Ht")
-        assert viewer._component.currentText() == ("total" if dim == 3 else f"Total {symbols[0]}")
+        symbols = ("E", "H") if dim == 3 else (("Et", "Hz") if polarization == "TE" else ("Ez", "Ht"))
+        assert viewer._component.currentText() == f"Total {symbols[0]}"
         viewer._material.setChecked(True)
-        fields = ("incident", "scattered", "total", "RCS")
+        fields = [f"{name} {symbol}" for name in ("Incident", "Total", "Scattered")
+                  for symbol in symbols] + ["RCS"]
         if dim == 3:
-            fields += ("Surface current",)
-            skin = result.vtk_datasets()["surface_current"]
+            import pyvista as pv
+            fields.append("Surface current")
+            datasets = pv.read(fem.load(tmp_path/"case.h5").export_vtk(tmp_path/"case.vtm"))
+            assert np.linalg.norm(result.scattered_h) > 0
+            for name in ("incident_h", "scattered_h", "total_h"):
+                cells = datasets["fields"].cell_data
+                np.testing.assert_allclose(cells[name+"_real"] + 1j*cells[name+"_imag"], getattr(result, name))
+                np.testing.assert_allclose(cells[name+"_magnitude"], np.linalg.norm(getattr(result, name), axis=1))
+            skin = datasets["surface_current"]
             np.testing.assert_allclose(skin["Js_real"] + 1j * skin["Js_imag"],
                                        result.surface_current_vertices.reshape(-1, 3))
-        else:
-            fields = [f"{name} {symbol}" for name in ("Incident", "Total", "Scattered")
-                      for symbol in symbols] + ["RCS"]
-            assert fields == [viewer._component.itemText(i) for i in range(viewer._component.count())]
+        assert fields == [viewer._component.itemText(i) for i in range(viewer._component.count())]
         for component in fields:
             viewer._component.setCurrentText(component)
             assert viewer._status.currentMessage() == ""
@@ -258,6 +295,8 @@ def test_shared_viewer_switches_fields_and_rcs(dim, polarization, tmp_path):
                 else:
                     assert "boundary_sibc" in viewer._plotter.actors
                     label = "|Js| (A/m)" if component == "Surface current" else "|E| (V/m)"
+                    if component.endswith(" H"):
+                        label = "|H| (A/m)"
                     assert any(label in data.point_data for data in datasets)
             else:
                 from matplotlib.quiver import Quiver
