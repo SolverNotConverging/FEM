@@ -1,7 +1,7 @@
 fem.scattering user API
 =======================
 
-Version 2.1.0. This reference covers the deliberately supported user API.
+Version 2.1.1. This reference covers the deliberately supported user API.
 Implementation helpers are documented in their source modules.
 
 Plane-wave scattering

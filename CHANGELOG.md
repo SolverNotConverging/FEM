@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.1 — 2026-11-27
+
+- Set `backend="auto"` explicitly in all four antenna example sweeps, following
+  the repository convention for runnable examples.
+
 ## 2.1.0 — 2026-11-27
 
 - Add driven antenna and plane-wave scattering solvers, 3D electrostatics,

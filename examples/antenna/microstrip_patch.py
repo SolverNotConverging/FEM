@@ -47,7 +47,7 @@ solver.add_waveguide_port(
 solver.add_pml(thickness="auto")
 solver.add_nf2ff(distance="auto")
 
-sweep = solver.sweep(frequencies=np.linspace(2.35e9, 2.55e9, 5), max_refinements=2)
+sweep = solver.sweep(frequencies=np.linspace(2.35e9, 2.55e9, 5), max_refinements=2, backend="auto")
 for case in sweep:
     gain = case.far_field([[0, 0, 1]]).realized_gain[0]
     neff = case.port_modes["microstrip"][0].neff

@@ -27,7 +27,7 @@ for name, z, drive in (("input", ends[0], 1.0), ("output", ends[1], 0.0)):
 
 solver.add_pml(thickness="auto")
 solver.add_nf2ff(distance="auto")
-sweep = solver.sweep(frequencies=np.linspace(7e9, 9e9, 5))
+sweep = solver.sweep(frequencies=np.linspace(7e9, 9e9, 5), backend="auto")
 for case in sweep:
     print(
         f"{case.frequency / 1e9:g} GHz   S11={case.s_parameters[0, 0]:.4f}   S21={case.s_parameters[1, 0]:.4f}"

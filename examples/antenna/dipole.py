@@ -19,7 +19,7 @@ solver.add_discrete_port(
 
 solver.add_pml(thickness="auto")
 solver.add_nf2ff(distance="auto")
-sweep = solver.sweep(frequencies=fem.C_0 * np.linspace(0.9, 1.1, 5))
+sweep = solver.sweep(frequencies=fem.C_0 * np.linspace(0.9, 1.1, 5), backend="auto")
 for case in sweep:
     print(f"{case.frequency / 1e6:.1f} MHz   S11={case.s_parameters[0, 0]:.4f}"
           f"   Feed voltage={case.port_voltage['feed']:.4g} V"

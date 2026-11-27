@@ -27,7 +27,7 @@ solver.add_waveguide_port(
 )
 solver.add_pml(thickness="auto")
 solver.add_nf2ff(distance="auto")
-sweep = solver.sweep(frequencies=np.linspace(9e9, 11e9, 5))
+sweep = solver.sweep(frequencies=np.linspace(9e9, 11e9, 5), backend="auto")
 for case in sweep:
     gain = case.far_field([[0, 0, 1]]).realized_gain[0]
     print(f"{case.frequency / 1e9:.2f} GHz   S11={case.s_parameters[0, 0]:.4f}"
