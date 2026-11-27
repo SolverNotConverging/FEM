@@ -45,7 +45,8 @@ def stagnating(owner, history):
 
 
 def run_adaptive(owner, solve_once, estimate, refine, *, max_refinements,
-                 adaptive_tolerance, error_type=ValueError, retry_errors=(), max_elements=None, max_dofs=None, absorber=None, periodic=False):
+                 adaptive_tolerance, error_type=ValueError, retry_errors=(), max_elements=None, max_dofs=None,
+                 absorber=None, periodic=False, physical_check=None):
     """Perform one initial solve and at most max_refinements mesh updates.
 
     An exhausted budget returns the last solution with converged=False.  A
@@ -114,14 +115,20 @@ def run_adaptive(owner, solve_once, estimate, refine, *, max_refinements,
             indicators, residual, *components = estimate(result)
             if not np.isfinite(residual):
                 raise error_type("Adaptive discretization residual is non-finite.")
+            record = {"refinement": iteration, "elements": len(indicators), "residual": float(residual)}
+            converged = (residual <= tolerance if physical_check is None
+                         else physical_check(result, history, record))
         except Exception:
             if last_usable is not None:
                 restore(last_usable[0])
             raise
-        converged = residual <= tolerance
         status = "tolerance" if converged else "refinement_limit" if iteration == limit else "refine"
-        history.append({"refinement": iteration, "elements": len(indicators),
-                        "residual": float(residual), "status": status})
+        record["status"] = status
+        history.append(record)
+        if hasattr(owner, "_driven_policy"):
+            record.update(mesh_profile=owner._driven_policy.name, marking_weights=dict(owner._marking_weights),
+                          marking_fraction=owner._marking_fraction, refinement_factor=owner._refinement_factor,
+                          requested_refinement_backend=owner._refinement_backend)
         if components:
             history[-1]["residual_components"] = components[0]
         if len(components) > 1:
@@ -146,7 +153,7 @@ def run_adaptive(owner, solve_once, estimate, refine, *, max_refinements,
             history[-1]["max_mode_pml_fraction"] = max(pml_fractions)
         if info.get("ndofs") is not None:
             history[-1]["ndofs"] = info["ndofs"]
-        if status == "refine" and stagnating(owner, history):
+        if status == "refine" and physical_check is None and stagnating(owner, history):
             status = "stagnation"
             history[-1]["status"] = status
             if components and components[0]:
@@ -183,8 +190,13 @@ def run_adaptive(owner, solve_once, estimate, refine, *, max_refinements,
             except RefinementLimit as exc:
                 history[-1].update(status=exc.status, message=str(exc))
                 status = exc.status
+        criterion = None
+        if "s_parameter_delta" in record:
+            change = record["s_parameter_delta"]
+            delta = "n/a" if change is None else f"{change:.4g}"
+            criterion = f"delta_S={delta}  S_tolerance={record['s_parameter_tolerance']:g}"
         report_refinement(owner, iteration, limit, len(indicators), residual, tolerance, status,
-                          info.get("ndofs"))
+                          info.get("ndofs"), criterion=criterion)
         if status not in ("refine", "pml_refine"):
             break
     key = "metadata" if any(field.name == "metadata" for field in fields(result)) else "solve_info"

@@ -14,9 +14,11 @@ def frequency_steps(frequencies):
             bar.update()
 
 
-def report_refinement(owner, step, limit, cells, residual, tolerance, status, field_dofs=None):
+def report_refinement(owner, step, limit, cells, residual, tolerance, status, field_dofs=None,
+                      *, criterion=None):
     if limit:
         dofs = f"  field_dofs={field_dofs}" if field_dofs is not None else ""
+        target = criterion if criterion is not None else f"tolerance={tolerance:g}"
         tqdm.write(f"{type(owner).__name__}  refinement {step}/{limit}  "
                    f"elements={cells}{dofs}  residual={residual:.4g}  "
-                   f"tolerance={tolerance:g}  {status}", file=sys.stderr)
+                   f"{target}  {status}", file=sys.stderr)

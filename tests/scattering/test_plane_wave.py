@@ -71,7 +71,8 @@ def cylinder(polarization, material=None):
     if material is not None:
         solver.add_geometry(shape=fem.shapes.Circle(center=(0, 0), radius=.18), material=material)
     solver.mesh(max_element_size=.035 if material is not None else .2)
-    return solver.solve(backend="cpu")
+    # Keep the analytical RCS regression at its benchmark discretization budget.
+    return solver.solve(backend="cpu", max_refinements=2, adaptive_tolerance=.05)
 
 
 @pytest.mark.parametrize("polarization", ["TM", "TE"])
@@ -234,7 +235,7 @@ def test_dielectric_sphere_rayleigh_rcs_and_vtk(tmp_path):
     solver.add_geometry(shape=fem.shapes.Sphere(center=(0,0,0), radius=radius),
                         material=fem.Material(epsilon=eps))
     solver.mesh(max_element_size=.12, element_order=1)
-    r = solver.solve(backend="cpu")
+    r = solver.solve(backend="cpu", max_refinements=2, adaptive_tolerance=.05)
     expected = 4*np.pi*k**4*radius**6*((eps-1)/(eps+2))**2
     back, null = r.radar_cross_section([[-1,0,0], [0,1,0]])
     assert back == pytest.approx(expected, rel=.12)

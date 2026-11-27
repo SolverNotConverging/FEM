@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased
+## 2.1.0 — 2026-11-27
+
+- Add driven antenna and plane-wave scattering solvers, 3D electrostatics,
+  and electric and magnetic vector-field views. Field and overlay selections
+  preserve the camera position.
+- Select initial mesh sizes and adaptive marking weights from the geometry and
+  materials in quadratic 3D driven solves. The calibration studies include
+  CST mesh exports, pass histories, and comparisons across guides and antennas.
+- Allow eight mesh updates by default in driven solves. Antennas check for a
+  maximum change below 0.02 in the complex S-matrix after at least three
+  physical solves. Scattering uses a normalized residual threshold of 0.02.
+- Improve material and boundary ownership, periodic meshing, and local modal
+  refinement. Add MMG adaptation with a Gmsh fallback and publish numerical
+  benchmarks with their figures and data.
+- Simplify the antenna examples into top-to-bottom scripts.
 
 - Add Et/Ht transverse-vector arrow selections to all waveguide and periodic
   mode viewers, including mesh/material overlays and saved results.

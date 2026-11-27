@@ -4,9 +4,11 @@ Antenna examples
 Run a script from the repository root. Each sweeps five frequencies and opens
 the shared result viewer. Select a frequency to inspect the fields and radiation
 pattern on the mesh adapted at the highest frequency.
-The through-guide, horn and dipole allow two adaptive refinements. The inset-fed
-patch allows four. Its input reflection near resonance is sensitive to the mesh.
-The highest-frequency solve stops early when the residual meets the tolerance.
+The microstrip patch example allows two refinements after the initial solve.
+The other examples use the default budget of eight.
+At the highest frequency, physical adaptation stops once the largest change
+in a complex S-parameter falls below 0.02 on or after the third physical mesh.
+The solver also checks convergence of the absorbing layer within the same budget.
 Lower frequencies reuse the resulting mesh. All four examples surround the
 physical box with a five-layer PML.
 

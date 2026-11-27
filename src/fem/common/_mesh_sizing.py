@@ -41,12 +41,12 @@ def curve_size_fields(gmsh, tolerance, scale, maximum, *, surfaces=False):
     return result
 
 
-def nodal_size_targets(points, cells, marked, maximum, pairs=()):
+def nodal_size_targets(points, cells, marked, maximum, pairs=(), *, refinement_factor=2.):
     vertices = points[cells]
     n = cells.shape[1]
     diameter = np.maximum.reduce([np.linalg.norm(vertices[:, i] - vertices[:, j], axis=1)
                                   for i in range(n) for j in range(i)])
-    diameter[marked] *= 0.5
+    diameter[marked] /= refinement_factor
     target = np.full(len(points), maximum, dtype=float)
     np.minimum.at(target, cells.ravel(), np.repeat(diameter, n))
     if len(pairs):

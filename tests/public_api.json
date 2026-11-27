@@ -3,7 +3,7 @@
     "path": "fem.antenna",
     "exports": ["AntennaSolver3D", "AntennaResult", "AntennaSweep", "RadiationPattern"],
     "solvers": {
-      "AntennaSolver3D": ["__init__", "add_geometry", "add_mesh_refinement", "add_pml", "add_nf2ff", "add_waveguide_port", "add_discrete_port", "solve_port_modes", "set_excitation", "mesh", "configure_adaptivity", "solve", "sweep", "show"]
+      "AntennaSolver3D": ["__init__", "add_geometry", "add_mesh_refinement", "add_pml", "add_nf2ff", "add_waveguide_port", "add_discrete_port", "solve_port_modes", "set_excitation", "mesh", "configure_adaptivity", "configure_s_parameter_convergence", "solve", "sweep", "show"]
     },
     "results": {
       "AntennaResult": ["far_field", "show_port_modes", "plot", "show", "save"],

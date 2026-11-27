@@ -23,6 +23,7 @@ The figure compares each method with its own problem’s initial mesh. A value o
 | Periodic modes | [Uniform lossless and lossy TEM media](uniform_periodic_medium.md) · [Periodic dielectric insert](periodic_defect.md) · [Complex mode of a stretched guide](leaky_mode.md) |
 | Scattering | [Dielectric cylinder](inclusion.md) · [Absorbing-layer convergence](pml_convergence.md) |
 | Antenna | [Two-port transmission](multiport.md) · [Short-dipole directivity and radiation resistance](short_dipole.md) |
+| CST comparison | [Initial mesh density and complex transmission](two_port_mesh.md) · [Exported meshes and guide calibration](two_port_mesh_calibration.md) · [Shared-mesh residuals for antennas and waveguide discontinuities](shared_mesh_refinement.md) |
 | Across solvers | [Automatic λ/4 versus λ/6 initial mesh](initial_wavelength.md) · [FEM/FDFD analytical validation, including two failed convergence checks](cross_solver_validation.md) |
 | Convergence diagnostics | [Slab window width and PEC-cylinder PML resolution](convergence_controls.md) |
 

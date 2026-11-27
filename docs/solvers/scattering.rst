@@ -128,7 +128,7 @@ first order through ``mesh(element_order=1)`` and use degree-five
 quadrature. Set the orders with ``mesh(element_order=..., quadrature_order=...)``.
 The tetrahedral geometry is affine at either field order. Refine the surface
 mesh to resolve the curvature of a smooth target.
-By default ``solve(max_refinements=2, adaptive_tolerance=0.05)`` checks
+By default ``solve(max_refinements=8, adaptive_tolerance=0.02)`` checks
 volume equations, interface flux jumps and natural boundary conditions after
 each solve. It refines the cells with the largest contributions. A zero budget uses the current mesh. The final
 residual and stopping reason are available in ``result.solve_info``.
@@ -139,6 +139,9 @@ Both types of mesh update count toward ``max_refinements``.
 Automatic meshing targets four elements per local wavelength at order two and
 ten at order one. The dielectric sizing applies inside the target so that
 vacuum and its exterior PML can use the free-space wavelength.
+Quadratic 3D models with a thin dielectric slab use additional local sizing.
+An adjoining conductor selects the printed-conductor settings. See the
+`driven mesh profiles <../adaptivity.rst>`_ for targets and marking weights.
 
 For a 3D PEC or impedance target, select **Surface current** to inspect
 the total-field conductor current. The VTK ``surface_current`` block

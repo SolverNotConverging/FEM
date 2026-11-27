@@ -1,6 +1,6 @@
 # Automatic quadratic initial mesh · λ/4 versus λ/6
 
-The same quadratic scattering and antenna problems were solved with zero adaptive passes. The control uses the old λ/6 background target on the current solver. The λ/4 run uses the unmodified default. Both follow automatic sizing, including CAD and material constraints. An explicit maximum element size would change those constraints and invalidate the comparison.
+The same quadratic scattering and antenna problems were solved on their initial meshes. These results compare the historical λ/6 and λ/4 background targets with material-aware CAD sizing in both runs. The reproduction script pins the wavelength divisor for the two-port antenna because its automatic target now depends on the guide geometry and fill material.
 
 The TM cylinder has radius 0.14 m and index 3. The angular width error uses 19 directions and the Bessel/Hankel expansion. The two-port guide is 0.72 × 0.30 × 0.55 m; its complex S₂₁ is compared with exp(−iβL). Both use a 1 m free-space wavelength and CPU solves.
 

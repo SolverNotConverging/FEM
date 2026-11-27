@@ -64,6 +64,7 @@ DESCRIPTIONS = {
     "dim": "Electrostatic mesh dimension (1, 2, or 3).",
     "max_elements": "Adaptive mesh element budget.",
     "marking_fraction": "Fraction of squared error indicators marked for refinement.",
+    "marking_weights": "Positive multipliers for individual squared residual terms during marking. Omitted terms use one. The stopping residual retains unit weights.",
     "Zs": "Surface impedance in ohms; alternatively select a metal preset.",
     "preset": "Metal name for the good-conductor impedance model.",
     "results": "Nonempty sequence of completed periodic mode sets, in sweep order.",
@@ -191,6 +192,9 @@ def render_references():
                 "path": "HDF5 result path for save, or .vtm path for export_vtk.",
                 "component": "Incident, total or scattered field. Choose Et/Hz for 2D TE, Ez/Ht for 2D TM, or E/H in 3D. Full 2D arrows include 'Total E vector' and 'Total H vector'. RCS in either dimension, or Surface current on a 3D conductor.",
                 "material": "Isotropic bulk material, PEC, surface impedance or good conductor.",
+                "refinement_factor": "Divide marked element diameters by this factor to set local target lengths. Must exceed one.",
+                "refinement_backend": "None selects the geometry profile. Explicit auto uses MMG with Gmsh fallback. Select gmsh for isotropic CAD remeshing.",
+                "marking_weights": "None selects the geometry profile. An explicit mapping replaces its weights. Missing terms in a mapping use one.",
             }
             returns = {"configure_adaptivity": "None", "mesh": "the physical mesh", "solve": "a ScatteringResult",
                        "add_geometry": "None", "add_mesh_refinement": "None", "add_pml": "the PML profile", "add_nf2ff": "None", "show": "the displayed figure or plotter",
@@ -200,6 +204,7 @@ def render_references():
                        "save": "the HDF5 path", "export_vtk": "the VTM path"}
             if family == "antenna":
                 descriptions.update(
+                    adaptive_tolerance="None uses the default port-matrix convergence test. A number selects a field-residual threshold unless a port-matrix test was explicitly configured.",
                     name="Unique port name.", axis="Waveguide axis (x, y or z).",
                     position="Reference plane coordinate in metres along the guide axis.",
                     u_range="First transverse Cartesian coordinate interval in metres.",
@@ -212,10 +217,14 @@ def render_references():
                     amplitude="Incident power-wave magnitude in square roots of watts.",
                     phase_deg="Phase in degrees for the drive or displayed vector phasor.",
                     port="Name of the configured waveguide port.",
+                    tolerance="Maximum absolute complex S-matrix entry change between physical meshes. None uses residual convergence.",
+                    cad_point_size="Optional CAD vertex length in metres, capped by wavelength, material and feed-gap sizing.",
+                    minimum_passes="Minimum physical mesh solves, including the initial solve.",
+                    consecutive_checks="Required consecutive physical mesh changes below tolerance.",
                     path="HDF5 result path.", quantity="Network magnitude (dB) or phase; real or imaginary vector field.",
                     component="S-parameters, Total E, Total H, Surface current, Directivity, Gain or Realized gain.",
                 )
-                returns.update(solve="an AntennaResult", sweep="an AntennaSweep",
+                returns.update(solve="an AntennaResult", sweep="an AntennaSweep", configure_s_parameter_convergence="None",
                                add_waveguide_port="None", add_discrete_port="None", solve_port_modes="a 2D waveguide ModeSet",
                                show_port_modes="the 2D waveguide mode viewer", set_excitation="None",
                                far_field="a RadiationPattern", plot="a Matplotlib figure or VTK plotter")

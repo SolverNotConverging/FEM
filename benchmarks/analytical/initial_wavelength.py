@@ -19,14 +19,15 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     rows = []
-    # Only replace the legacy background size. Both runs use the public
-    # automatic path, including its material-aware CAD size field.
+    # Pin the historical wavelength targets while preserving material-aware CAD sizing.
     for name, build, cls in [("cylinder", inclusion, fem.ScatteringSolver2D),
                              ("two-port", multiport, fem.AntennaSolver3D)]:
         options = {"element_order": 2} if name == "two-port" else {}
         for denominator in (6, 4):
+            if name == "two-port":
+                options["wavelength_elements"] = denominator
             control = (patch.object(cls, "_wavelength_size", staticmethod(lambda wavelength, order: wavelength / 6))
-                       if denominator == 6 else nullcontext())
+                       if name == "cylinder" and denominator == 6 else nullcontext())
             start = perf_counter()
             with control:
                 result, observable, measured, exact = build(None, dict(backend="cpu", max_refinements=0), **options)

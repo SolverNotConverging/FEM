@@ -81,17 +81,24 @@ def leaky_mode(h, solve, anisotropic=False):
     return result, "complex_effective_index", result[0].neff, exact
 
 
-def multiport(h, solve, anisotropic=False, element_order=1):
+def two_port_guide(length=.55, epsilon=1.):
     solver = fem.AntennaSolver3D(frequency=fem.C_0, x_range=(-1., 1.), y_range=(-.85, .85),
                                  z_range=(-.95, .95), pml_layers=1)
-    u, v, ends = (-.36, .36), (-.15, .15), (-.275, .275)
+    u, v, ends = (-.36, .36), (-.15, .15), (-length/2, length/2)
     bore = fem.shapes.Box(bounds=(u, v, ends))
-    outer = fem.shapes.Box(bounds=((-.45, .45), (-.27, .27), (-.37, .37)))
+    outer = fem.shapes.Box(bounds=((-.45, .45), (-.27, .27), (ends[0]-.095, ends[1]+.095)))
     solver.add_geometry(shape=fem.shapes.Difference(shape=outer, tool=bore), material=fem.materials.PEC)
+    if epsilon != 1.:
+        solver.add_geometry(shape=bore, material=fem.Material(epsilon=epsilon, name="Guide dielectric"))
     for name, z in zip(("input", "output"), ends):
         solver.add_waveguide_port(name=name, axis="z", position=z, num_modes=1,
                                   cross_section=fem.shapes.Rectangle(bounds=(u, v)))
-    solver.mesh(max_element_size=h, element_order=element_order)
+    return solver
+
+
+def multiport(h, solve, anisotropic=False, element_order=1, wavelength_elements=None):
+    solver = two_port_guide()
+    solver.mesh(max_element_size=h, element_order=element_order, wavelength_elements=wavelength_elements)
     solver.configure_adaptivity(anisotropic=anisotropic)
     result = solver.solve(**solve)
     beta = np.sqrt((2*np.pi)**2 - (np.pi/.72)**2)

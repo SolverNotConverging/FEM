@@ -139,8 +139,12 @@ def test_every_solver_shares_one_workflow():
         assert mesh["element_order"].default == 2
         assert mesh["quadrature_order"].default == 5
         solve = inspect.signature(solver.solve).parameters
-        assert solve["max_refinements"].default == 2
-        assert solve["adaptive_tolerance"].default == .05
+        driven = solver in (fem.ScatteringSolver2D, fem.ScatteringSolver3D, fem.AntennaSolver3D)
+        assert solve["max_refinements"].default == (8 if driven else 2)
+        if solver is fem.AntennaSolver3D:
+            assert solve["adaptive_tolerance"].default is None
+        else:
+            assert solve["adaptive_tolerance"].default == (.02 if driven else .05)
     results = (fem.ElectrostaticResult, fem.ModeSet, fem.PeriodicModeSet, fem.PeriodicSweepResult,
                fem.ScatteringResult, fem.AntennaResult, fem.AntennaSweep)
     for result in results:

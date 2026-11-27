@@ -1,7 +1,7 @@
 fem.antenna user API
 ====================
 
-Version 2.0.2. This reference covers the deliberately supported user API.
+Version 2.1.0. This reference covers the deliberately supported user API.
 Implementation helpers are documented in their source modules.
 
 Waveguide-fed antennas
@@ -390,7 +390,7 @@ Returns: None.
 
 .. code-block:: python
 
-    AntennaSolver3D.mesh(*, max_element_size=None, element_order=2, quadrature_order=5)
+    AntennaSolver3D.mesh(*, max_element_size=None, wavelength_elements=None, cad_point_size=None, element_order=2, quadrature_order=5)
 
 .. list-table:: Arguments
    :header-rows: 1
@@ -406,6 +406,16 @@ Returns: None.
      - Optional
      - ``None``
      - Maximum initial element edge length in metres.
+   * - ``wavelength_elements``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Minimum number of initial elements per local wavelength.
+   * - ``cad_point_size``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Optional CAD vertex length in metres, capped by wavelength, material and feed-gap sizing.
    * - ``element_order``
      - ``int``
      - Optional
@@ -424,9 +434,9 @@ Returns: the physical mesh.
 
 .. code-block:: python
 
-    AntennaSolver3D.configure_adaptivity(*, minimum_quality=None, max_growth=None, stagnation_window=3, minimum_reduction=0.01, anisotropic=False)
+    AntennaSolver3D.configure_adaptivity(*, minimum_quality=None, max_growth=None, stagnation_window=3, minimum_reduction=0.01, anisotropic=False, marking_fraction=None, refinement_factor=None, refinement_backend=None, marking_weights=None)
 
-Set candidate simplex quality, per-pass growth and residual progress limits.
+Configure driven mesh marking, local size reduction and candidate acceptance.
 
 .. list-table:: Arguments
    :header-rows: 1
@@ -462,6 +472,62 @@ Set candidate simplex quality, per-pass growth and residual progress limits.
      - Optional
      - ``False``
      - Use a directional MMG metric based on local residual-density gradients in nonperiodic 2D and 3D.
+   * - ``marking_fraction``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Fraction of squared error indicators marked for refinement.
+   * - ``refinement_factor``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Divide marked element diameters by this factor to set local target lengths. Must exceed one.
+   * - ``refinement_backend``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - None selects the geometry profile. Explicit auto uses MMG with Gmsh fallback. Select gmsh for isotropic CAD remeshing.
+   * - ``marking_weights``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - None selects the geometry profile. An explicit mapping replaces its weights. Missing terms in a mapping use one.
+
+Returns: None.
+
+``AntennaSolver3D.configure_s_parameter_convergence``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    AntennaSolver3D.configure_s_parameter_convergence(*, tolerance=None, minimum_passes=3, consecutive_checks=1)
+
+Stop physical adaptation on the maximum change in the complex port matrix.
+
+.. list-table:: Arguments
+   :header-rows: 1
+   :widths: 16 20 12 16 36
+
+   * - Argument
+     - Type / units
+     - Required / optional
+     - Default
+     - Meaning
+   * - ``tolerance``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Maximum absolute complex S-matrix entry change between physical meshes. None uses residual convergence.
+   * - ``minimum_passes``
+     - ``int``
+     - Optional
+     - ``3``
+     - Minimum physical mesh solves, including the initial solve.
+   * - ``consecutive_checks``
+     - ``int``
+     - Optional
+     - ``1``
+     - Required consecutive physical mesh changes below tolerance.
 
 Returns: None.
 
@@ -470,7 +536,7 @@ Returns: None.
 
 .. code-block:: python
 
-    AntennaSolver3D.solve(*, backend='auto', max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None, pml_tolerance=None, pml_observable=None, max_pml_refinements=3)
+    AntennaSolver3D.solve(*, backend='auto', max_refinements=8, adaptive_tolerance=None, max_elements=None, max_dofs=None, pml_tolerance=None, pml_observable=None, max_pml_refinements=3)
 
 Adapt against all independent port excitations, then report their coherent superposition.
 
@@ -491,13 +557,13 @@ Adapt against all independent port excitations, then report their coherent super
    * - ``max_refinements``
      - ``int``
      - Optional
-     - ``2``
+     - ``8``
      - Maximum mesh refinements after the initial solve; zero means one solve.
    * - ``adaptive_tolerance``
-     - ``float``
+     - ``array-like or scalar``
      - Optional
-     - ``0.05``
-     - Relative discretization-residual stopping threshold.
+     - ``None``
+     - None uses the default port-matrix convergence test. A number selects a field-residual threshold unless a port-matrix test was explicitly configured.
    * - ``max_elements``
      - ``array-like or scalar``
      - Optional
@@ -531,7 +597,7 @@ Returns: an AntennaResult.
 
 .. code-block:: python
 
-    AntennaSolver3D.sweep(*, frequencies, backend='auto', max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None, pml_tolerance=None, pml_observable=None, max_pml_refinements=3)
+    AntennaSolver3D.sweep(*, frequencies, backend='auto', max_refinements=8, adaptive_tolerance=None, max_elements=None, max_dofs=None, pml_tolerance=None, pml_observable=None, max_pml_refinements=3)
 
 Adapt at the highest frequency in hertz and reuse that mesh at every lower frequency.
 
@@ -557,13 +623,13 @@ Adapt at the highest frequency in hertz and reuse that mesh at every lower frequ
    * - ``max_refinements``
      - ``int``
      - Optional
-     - ``2``
+     - ``8``
      - Maximum mesh refinements after the initial solve; zero means one solve.
    * - ``adaptive_tolerance``
-     - ``float``
+     - ``array-like or scalar``
      - Optional
-     - ``0.05``
-     - Relative discretization-residual stopping threshold.
+     - ``None``
+     - None uses the default port-matrix convergence test. A number selects a field-residual threshold unless a port-matrix test was explicitly configured.
    * - ``max_elements``
      - ``array-like or scalar``
      - Optional

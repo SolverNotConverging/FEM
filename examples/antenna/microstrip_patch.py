@@ -5,7 +5,7 @@ import fem
 
 solver = fem.AntennaSolver3D(
     frequency=2.45e9, x_range=(-0.091, 0.091), y_range=(-0.091, 0.091),
-    z_range=(-0.069, 0.077),
+    z_range=(-0.069, 0.077), pml_layers=5,
 )
 board = (-0.029, 0.029)
 height = 0.0016
@@ -46,7 +46,8 @@ solver.add_waveguide_port(
 )
 solver.add_pml(thickness="auto")
 solver.add_nf2ff(distance="auto")
-sweep = solver.sweep(frequencies=np.linspace(2.35e9, 2.55e9, 5), max_refinements=4, backend="auto")
+
+sweep = solver.sweep(frequencies=np.linspace(2.35e9, 2.55e9, 5), max_refinements=2)
 for case in sweep:
     gain = case.far_field([[0, 0, 1]]).realized_gain[0]
     neff = case.port_modes["microstrip"][0].neff

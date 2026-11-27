@@ -1,5 +1,6 @@
 """Conforming Gmsh meshes with material provenance and PEC cavities."""
 from dataclasses import asdict, replace
+from collections.abc import Mapping
 from threading import RLock
 from uuid import uuid4
 
@@ -19,6 +20,7 @@ from fem.common.discretization import DEFAULT_QUADRATURE_ORDER
 from fem.adaptivity._budget import check_candidate
 from fem.adaptivity import bulk_mark
 from fem.common._mesh_sizing import append_size_view, nodal_size_targets, size_view
+from .mesh_policy import DrivenMeshPolicy, driven_mesh_policy
 
 _lock = RLock()
 
@@ -28,6 +30,8 @@ class RadiationBoxSolver(ElectromagneticSolverMixin):
         self._mesh_orders = {"element_order": self._default_element_order, "quadrature_order": DEFAULT_QUADRATURE_ORDER}
         self._adaptive_sizes = None
         self._mesh_auto_materials = True
+        self._driven_overrides = {}
+        self._apply_driven_policy(DrivenMeshPolicy())
         self._nf_box = None
         self._nf_distance = None
         self._pml_layers = positive_integer(layers, "pml_layers")
@@ -35,6 +39,62 @@ class RadiationBoxSolver(ElectromagneticSolverMixin):
         width = self.wavelength / 3 if auto else thickness
         self._default_pml = PMLSpec(width)
         self._explicit_pmls = {}
+
+    def configure_adaptivity(self, *, minimum_quality=None, max_growth=None, stagnation_window=3,
+                             minimum_reduction=.01, anisotropic=False, marking_fraction=None,
+                             refinement_factor=None, refinement_backend=None, marking_weights=None):
+        """Configure driven mesh marking, local size reduction and candidate acceptance."""
+        overrides = {}
+        if marking_fraction is not None:
+            fraction = positive_real(marking_fraction, "marking_fraction")
+            if fraction > 1:
+                raise ConfigurationError("marking_fraction must be at most one.")
+            overrides["fraction"] = fraction
+        if refinement_factor is not None:
+            factor = positive_real(refinement_factor, "refinement_factor")
+            if factor <= 1:
+                raise ConfigurationError("refinement_factor must exceed one.")
+            overrides["factor"] = factor
+        weights = {} if marking_weights is None else marking_weights
+        names = {"interface", "element_pde", "divergence", "natural_boundary", "port_boundary"}
+        if not isinstance(weights, Mapping) or set(weights) - names:
+            raise ConfigurationError(f"marking_weights must map residual terms to weights. Supported terms: {sorted(names)}.")
+        if marking_weights is not None:
+            overrides["weights"] = {key: positive_real(value, key) for key, value in weights.items()}
+        if refinement_backend not in (None, "auto", "gmsh") or (refinement_backend == "gmsh" and anisotropic):
+            raise ConfigurationError("Choose auto or gmsh. Directional metrics require auto (MMG).")
+        if refinement_backend is not None or anisotropic:
+            overrides["backend"] = refinement_backend or "auto"
+        super().configure_adaptivity(minimum_quality=minimum_quality, max_growth=max_growth,
+                                    stagnation_window=stagnation_window, minimum_reduction=minimum_reduction,
+                                    anisotropic=anisotropic)
+        self._driven_overrides = overrides
+        self._apply_driven_policy(self._driven_policy)
+
+    def _apply_driven_policy(self, policy):
+        self._driven_policy = policy
+        opts = self._driven_overrides
+        self._marking_fraction = opts.get("fraction", policy.fraction)
+        self._refinement_factor = opts.get("factor", policy.factor)
+        self._refinement_backend = opts.get("backend", policy.backend)
+        weights = {"interface": 4., "element_pde": 4.} if policy.fitted_weights else {}
+        self._marking_weights = opts.get("weights", weights)
+
+    def _driven_mesh_settings(self, wavelength, order, maximum, density=None, point=None):
+        policy = driven_mesh_policy(self._regions, tuple(getattr(self, "_ports", {}).values()),
+                                    len(self._ranges), wavelength, order)
+        automatic = density is None and (maximum is None or
+                     (self._adaptive_sizes is not None and self._mesh_auto_materials))
+        if maximum is not None:
+            size = positive_real(maximum, "max_element_size")
+        elif density is not None or policy.density is not None:
+            size = wavelength / (density if density is not None else policy.density)
+        else:
+            size = self._wavelength_size(wavelength, order)
+        if automatic and policy.size_cad_points and point is None:
+            point = size
+        local = policy.local_sizes if automatic else ()
+        return policy, size, point, local
 
     @property
     def _pml_axes(self):
@@ -198,7 +258,9 @@ class RadiationBoxSolver(ElectromagneticSolverMixin):
     def _refine_driven(self, indicators):
         snapshot = self.mesh_data
         cells = snapshot.elements
-        self._adaptive_sizes = nodal_size_targets(snapshot.coordinates, cells, bulk_mark(indicators), self._size)
+        marked = bulk_mark(indicators, self._marking_fraction)
+        self._adaptive_sizes = nodal_size_targets(snapshot.coordinates, cells, marked, self._size,
+                                                 refinement_factor=self._refinement_factor)
         try:
             self.mesh(max_element_size=self._size, **self._mesh_orders)
         finally:
@@ -240,7 +302,8 @@ def _local_sizes(gmsh, refinements, origin, scale, size, view, material_entities
         fields.setAsBackgroundMesh(combined)
 
 
-def build_mesh(ranges, regions, size, *, interior_box=None, port_gaps=None, refinements=(), adaptive_sizes=None, material_aware=False):
+def build_mesh(ranges, regions, size, *, interior_box=None, port_gaps=None, refinements=(),
+               adaptive_sizes=None, material_aware=False, cad_point_size=None):
     import gmsh
 
     dim = len(ranges)
@@ -303,6 +366,14 @@ def build_mesh(ranges, regions, size, *, interior_box=None, port_gaps=None, refi
                         if isinstance(material, materials.Material):
                             material_entities[entity] = np.sqrt(abs(np.prod(bulk_values(material, form="scalar"))))
             _local_sizes(gmsh, refinements, origin, scale, size, view, material_entities)
+            if cad_point_size is not None:
+                # Explicit CAD vertex lengths replace Gmsh's automatic point sizing.
+                # Apply the finest adjacent material last at shared vertices.
+                gmsh.model.mesh.setSize(gmsh.model.getEntities(0), min(size, cad_point_size) * scale)
+                for entity, index in sorted(material_entities.items(), key=lambda item: item[1]):
+                    if index > 1:
+                        vertices = gmsh.model.getBoundary([entity], recursive=True, oriented=False)
+                        gmsh.model.mesh.setSize(vertices, min(cad_point_size, size/index) * scale)
             # Resolve the finite terminal separation locally even when the air box
             # is meshed at a much larger fraction of a wavelength.
             for gap in port_gaps.values():
@@ -310,7 +381,12 @@ def build_mesh(ranges, regions, size, *, interior_box=None, port_gaps=None, refi
                 padding = 1e-7
                 points = gmsh.model.getEntitiesInBoundingBox(
                     *(limits[:, 0] - padding), *(limits[:, 1] + padding), dim=0)
-                gmsh.model.mesh.setSize(points, min(size * scale, np.min(np.diff(limits)) / 2))
+                gap_size = min(size * scale, np.min(np.diff(limits)) / 2)
+                if cad_point_size is not None:
+                    for point, current in zip(points, gmsh.model.mesh.getSizes(points)):
+                        gmsh.model.mesh.setSize([point], min(current, gap_size) if current > 0 else gap_size)
+                else:
+                    gmsh.model.mesh.setSize(points, gap_size)
             gmsh.model.mesh.generate(dim)
             if adaptive_sizes is not None:
                 from fem.adaptivity.remeshing import adapt_cad_interiors

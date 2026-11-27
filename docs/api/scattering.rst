@@ -1,7 +1,7 @@
 fem.scattering user API
 =======================
 
-Version 2.0.2. This reference covers the deliberately supported user API.
+Version 2.1.0. This reference covers the deliberately supported user API.
 Implementation helpers are documented in their source modules.
 
 Plane-wave scattering
@@ -252,9 +252,9 @@ Returns: the physical mesh.
 
 .. code-block:: python
 
-    ScatteringSolver2D.configure_adaptivity(*, minimum_quality=None, max_growth=None, stagnation_window=3, minimum_reduction=0.01, anisotropic=False)
+    ScatteringSolver2D.configure_adaptivity(*, minimum_quality=None, max_growth=None, stagnation_window=3, minimum_reduction=0.01, anisotropic=False, marking_fraction=None, refinement_factor=None, refinement_backend=None, marking_weights=None)
 
-Set candidate simplex quality, per-pass growth and residual progress limits.
+Configure driven mesh marking, local size reduction and candidate acceptance.
 
 .. list-table:: Arguments
    :header-rows: 1
@@ -290,6 +290,26 @@ Set candidate simplex quality, per-pass growth and residual progress limits.
      - Optional
      - ``False``
      - Use a directional MMG metric based on local residual-density gradients in nonperiodic 2D and 3D.
+   * - ``marking_fraction``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Fraction of squared error indicators marked for refinement.
+   * - ``refinement_factor``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Divide marked element diameters by this factor to set local target lengths. Must exceed one.
+   * - ``refinement_backend``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - None selects the geometry profile. Explicit auto uses MMG with Gmsh fallback. Select gmsh for isotropic CAD remeshing.
+   * - ``marking_weights``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - None selects the geometry profile. An explicit mapping replaces its weights. Missing terms in a mapping use one.
 
 Returns: None.
 
@@ -298,7 +318,7 @@ Returns: None.
 
 .. code-block:: python
 
-    ScatteringSolver2D.solve(*, backend='auto', max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None, pml_tolerance=None, pml_observable=None, max_pml_refinements=3)
+    ScatteringSolver2D.solve(*, backend='auto', max_refinements=8, adaptive_tolerance=0.02, max_elements=None, max_dofs=None, pml_tolerance=None, pml_observable=None, max_pml_refinements=3)
 
 Refine the physical mesh by residual and the PML by observable change.
 
@@ -319,12 +339,12 @@ Refine the physical mesh by residual and the PML by observable change.
    * - ``max_refinements``
      - ``int``
      - Optional
-     - ``2``
+     - ``8``
      - Maximum mesh refinements after the initial solve; zero means one solve.
    * - ``adaptive_tolerance``
      - ``float``
      - Optional
-     - ``0.05``
+     - ``0.02``
      - Relative discretization-residual stopping threshold.
    * - ``max_elements``
      - ``array-like or scalar``
@@ -624,9 +644,9 @@ Returns: the physical mesh.
 
 .. code-block:: python
 
-    ScatteringSolver3D.configure_adaptivity(*, minimum_quality=None, max_growth=None, stagnation_window=3, minimum_reduction=0.01, anisotropic=False)
+    ScatteringSolver3D.configure_adaptivity(*, minimum_quality=None, max_growth=None, stagnation_window=3, minimum_reduction=0.01, anisotropic=False, marking_fraction=None, refinement_factor=None, refinement_backend=None, marking_weights=None)
 
-Set candidate simplex quality, per-pass growth and residual progress limits.
+Configure driven mesh marking, local size reduction and candidate acceptance.
 
 .. list-table:: Arguments
    :header-rows: 1
@@ -662,6 +682,26 @@ Set candidate simplex quality, per-pass growth and residual progress limits.
      - Optional
      - ``False``
      - Use a directional MMG metric based on local residual-density gradients in nonperiodic 2D and 3D.
+   * - ``marking_fraction``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Fraction of squared error indicators marked for refinement.
+   * - ``refinement_factor``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - Divide marked element diameters by this factor to set local target lengths. Must exceed one.
+   * - ``refinement_backend``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - None selects the geometry profile. Explicit auto uses MMG with Gmsh fallback. Select gmsh for isotropic CAD remeshing.
+   * - ``marking_weights``
+     - ``array-like or scalar``
+     - Optional
+     - ``None``
+     - None selects the geometry profile. An explicit mapping replaces its weights. Missing terms in a mapping use one.
 
 Returns: None.
 
@@ -670,7 +710,7 @@ Returns: None.
 
 .. code-block:: python
 
-    ScatteringSolver3D.solve(*, backend='auto', max_refinements=2, adaptive_tolerance=0.05, max_elements=None, max_dofs=None, pml_tolerance=None, pml_observable=None, max_pml_refinements=3)
+    ScatteringSolver3D.solve(*, backend='auto', max_refinements=8, adaptive_tolerance=0.02, max_elements=None, max_dofs=None, pml_tolerance=None, pml_observable=None, max_pml_refinements=3)
 
 Refine the physical mesh by residual and the PML by observable change.
 
@@ -691,12 +731,12 @@ Refine the physical mesh by residual and the PML by observable change.
    * - ``max_refinements``
      - ``int``
      - Optional
-     - ``2``
+     - ``8``
      - Maximum mesh refinements after the initial solve; zero means one solve.
    * - ``adaptive_tolerance``
      - ``float``
      - Optional
-     - ``0.05``
+     - ``0.02``
      - Relative discretization-residual stopping threshold.
    * - ``max_elements``
      - ``array-like or scalar``

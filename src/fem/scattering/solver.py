@@ -1,5 +1,6 @@
 """Scattered-field Helmholtz and curl-curl finite elements in vacuum."""
 import numpy as np
+from dataclasses import replace
 from scipy.sparse.linalg import spsolve
 from skfem import Basis, BilinearForm, ElementTriP1, ElementTriP2, FacetBasis, LinearForm, asm
 from skfem.helpers import curl, dot, grad
@@ -103,20 +104,22 @@ class _PlaneWaveSolver(RadiationBoxSolver):
         element_order, quadrature_order = field_orders(
             self._default_element_order if element_order is None else element_order,
             quadrature_order, (1, 2))
-        size = (self._wavelength_size(self.wavelength, element_order) if max_element_size is None
-                else positive_real(max_element_size, "max_element_size"))
+        policy, size, point, local = self._driven_mesh_settings(self.wavelength, element_order, max_element_size)
         self._surface = self._nf2ff_surface()
         material_aware = max_element_size is None or (self._adaptive_sizes is not None and self._mesh_auto_materials)
         physical, snapshot, faces = build_mesh(
             self._physical_ranges(self._pml_profiles), self._regions, size,
-            interior_box=self._surface, refinements=self._refinements, adaptive_sizes=self._adaptive_sizes,
-            material_aware=material_aware)
+            interior_box=self._surface, refinements=(*self._refinements, *local), adaptive_sizes=self._adaptive_sizes,
+            material_aware=material_aware, cad_point_size=point)
+        snapshot = replace(snapshot, info={**snapshot.info, "mesh_profile": policy.name,
+                            "automatic_local_sizes": [h for _, h in local]})
         self._attach_pml(physical, snapshot, faces, element_order, quadrature_order)
+        self._apply_driven_policy(policy)
         self._mesh_auto_materials = material_aware
         self._size, self.result = size, None
         return self.mesh_data
 
-    def solve(self, *, backend="auto", max_refinements=2, adaptive_tolerance=0.05,
+    def solve(self, *, backend="auto", max_refinements=8, adaptive_tolerance=0.02,
               max_elements=None, max_dofs=None, pml_tolerance=None, pml_observable=None,
               max_pml_refinements=3):
         """Refine the physical mesh by residual and the PML by observable change."""
@@ -243,7 +246,8 @@ class _PlaneWaveSolver(RadiationBoxSolver):
 
         self._estimate = driven_residual(basis, coeff, b.ravel(), a.ravel(), k, quadrature,
                                          incident, incident_derivative, walls=natural_walls,
-                                         absorber=(self._physical_ranges(self._pml_profiles), self._pml_profiles))
+                                         absorber=(self._physical_ranges(self._pml_profiles), self._pml_profiles),
+                                         marking_weights=self._marking_weights)
         positions, current, moment = _monitor_sources(basis, self._surface, coeff, k, quadrature)
         incident_transverse = scattered_transverse = None
         scattered_h = None

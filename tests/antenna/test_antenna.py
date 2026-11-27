@@ -36,6 +36,7 @@ def guide(*, open_end=False, higher_mode=False, wall=fem.materials.PEC, pml_laye
 @pytest.mark.slow
 def test_two_port_guide_s_and_coherent_excitation(tmp_path, monkeypatch):
     s = guide()
+    s.configure_adaptivity(refinement_backend="auto")
     solves = []
     solve = s._solve
 
@@ -128,9 +129,73 @@ def test_open_guide_checks_s_matrix_on_fixed_physical_mesh():
     assert final["pml_observable_change"] == pytest.approx(change / norm)
 
 
+def test_s_parameter_checks_use_complex_phase_and_consecutive_physical_passes():
+    from types import SimpleNamespace
+    from fem.antenna.solver import _SParameterConvergence
+
+    check = _SParameterConvergence(.02, 3, 2)
+    history = []
+    for s21, expected in [(1, False), (1.01, False), (1j, False), (.999j, False), (1j, True)]:
+        record = {"status": "refine"}
+        matrix = np.array([[0, 1], [s21, 0]])
+        assert check(SimpleNamespace(s_parameters=matrix), history, record) == expected
+        history.append(record)
+    assert history[2]["s_parameter_delta"] == pytest.approx(abs(1j - 1.01))
+    history[-1]["status"] = "pml_refine"
+    shell = {}
+    assert check(SimpleNamespace(s_parameters=matrix), history, shell)
+    assert shell["physical_pass"] == 5 and shell["s_parameter_checks"] == 2
+    assert shell["s_parameter_delta"] is None
+
+
+def test_s_parameter_budget_and_wavelength_sizing_in_a_sweep():
+    solver = guide(element_order=1, pml_layers=1, max_element_size=.19)
+    solver.mesh(wavelength_elements=4, element_order=1)
+    solver.configure_s_parameter_convergence(tolerance=.02)
+    sweep = solver.sweep(frequencies=np.array([1., 1.05]) * fem.C_0, backend="cpu", max_refinements=0)
+    assert sweep[0].mesh_data is sweep[1].mesh_data
+    assert sweep[1].mesh_data.info["size"] == pytest.approx(1 / (4 * 1.05))
+    assert not sweep[1].solve_info["adaptive_converged"]
+    first, = sweep[1].solve_info["adaptive_history"]
+    assert first["status"] == "refinement_limit" and first["s_parameter_delta"] is None
+    with pytest.raises(fem.ConfigurationError):
+        solver.mesh(max_element_size=.2, wavelength_elements=4)
+
+
 def test_selected_mode_must_propagate():
     with pytest.raises(fem.ConfigurationError, match="below cutoff"):
         guide().sweep(frequencies=[0.4 * fem.C_0], backend="cpu")
+
+
+def test_driven_mesh_controls_reach_the_mesher(monkeypatch):
+    import gmsh
+
+    solver = guide(pml_layers=1, element_order=1, max_element_size=.24)
+    solver.add_geometry(shape=fem.shapes.Box(bounds=((-0.36, .36), (-.15, .15), (-.275, .275))),
+                        material=fem.Material(name="Filling", epsilon=4))
+    lengths = []
+    set_size = gmsh.model.mesh.setSize
+
+    def record(points, size):
+        lengths.append(size)
+        return set_size(points, size)
+
+    monkeypatch.setattr(gmsh.model.mesh, "setSize", record)
+    solver.mesh(wavelength_elements=4, cad_point_size=.20, element_order=1)
+    scale = 1 / np.ptp(solver._physical_ranges(solver._pml_profiles), axis=1).max()
+    np.testing.assert_allclose(lengths, [.20 * scale, .125 * scale])
+    for invalid in ({"marking_fraction": 0}, {"marking_fraction": 1.1}, {"refinement_factor": 1},
+                    {"refinement_backend": "gmsh", "anisotropic": True},
+                    {"marking_weights": {"interface": 0}}, {"marking_weights": {"unknown": 2}}):
+        with pytest.raises(fem.ConfigurationError):
+            solver.configure_adaptivity(**invalid)
+    solver.configure_adaptivity(marking_fraction=.25, refinement_factor=1.5, refinement_backend="gmsh",
+                                marking_weights={"element_pde": 4.})
+    solver.configure_s_parameter_convergence(tolerance=.02)
+    result = solver.solve(backend="cpu", max_refinements=1)
+    first, last = result.solve_info["adaptive_history"]
+    assert first["refinement_backend"] == "gmsh" and last["physical_pass"] == 2
+    np.testing.assert_allclose(lengths[2:], lengths[:2])
 
 
 def test_viewer_inspects_port_modes_and_animates_vectors():

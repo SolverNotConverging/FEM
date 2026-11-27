@@ -27,6 +27,25 @@ def diagnostics(result):
     return result.metadata if hasattr(result, "metadata") else result.solve_info
 
 
+def test_marking_weights_change_local_ranking_without_changing_residual():
+    from skfem import Basis, MeshTet
+    from fem.adaptivity.driven import driven_residual
+    from fem.common.tet_hcurl import tetrahedral_element
+
+    mesh = MeshTet().refined()
+    basis = Basis(mesh, tetrahedral_element(1), intorder=5, elements=np.arange(mesh.nelements))
+    coeff = np.random.default_rng(137).normal(size=basis.N)
+    eps = 1. + mesh.p[:, mesh.t].mean(axis=1)[0]
+    args = (basis, coeff, eps, np.ones(mesh.nelements), 3., 5)
+    terms = {}
+    base, residual, components = driven_residual(*args, component_indicators=terms)
+    weighted, physical, report = driven_residual(*args, marking_weights={"interface": 4.})
+    np.testing.assert_allclose(base, sum(terms.values()))
+    np.testing.assert_allclose(weighted, base + 3.*terms["interface"])
+    assert physical == residual and report == components
+    assert not np.array_equal(weighted.argsort(), base.argsort())
+
+
 def test_periodic_tm_measures_electric_flux_jump():
     solver = PeriodicModeSolver2D(frequency=c, x_range=1., z_range=.25, polarization="TM",
                                   boundary=materials.PMC)

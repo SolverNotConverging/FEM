@@ -14,7 +14,7 @@ _request = ContextVar("fem_mmg_request", default=None)
 
 
 def adapt_candidate(owner, dim, weights, build, record, *, periodic=False):
-    if dim == 1 or periodic:
+    if dim == 1 or periodic or getattr(owner, "_refinement_backend", "auto") == "gmsh":
         record["refinement_backend"] = "native" if dim == 1 else "gmsh"
         return build()
     saved = vars(owner).copy()

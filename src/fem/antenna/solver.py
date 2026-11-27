@@ -1,6 +1,6 @@
 """Driven three-dimensional edge-element antenna model with multimode wave ports."""
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 import numpy as np
 from scipy.sparse import bmat, eye, hstack, vstack
@@ -49,6 +49,36 @@ def _drive(amplitude, phase_deg):
     return amplitude, finite_real(phase_deg, "phase_deg")
 
 
+@dataclass(frozen=True)
+class _SParameterConvergence:
+    tolerance: float
+    minimum_passes: int
+    consecutive_checks: int
+
+    def __call__(self, result, history, record):
+        matrix = np.asarray(result.s_parameters)
+        if not matrix.size or not np.isfinite(matrix).all():
+            raise SolverError("S-parameter convergence requires a finite, nonempty matrix.")
+        previous = history[-1] if history else None
+        physical_pass, checks, delta = 1, 0, None
+        if previous is not None:
+            physical_pass = previous["physical_pass"]
+            checks = previous["s_parameter_checks"]
+            # The absorber has its own convergence check on a fixed physical mesh.
+            if previous["status"] != "pml_refine":
+                physical_pass += 1
+                reference = previous["s_parameter_matrix"]
+                if reference.shape != matrix.shape:
+                    raise SolverError("Port matrix shape changed during mesh refinement.")
+                delta = float(np.max(np.abs(matrix - reference)))
+                checks = checks + 1 if delta < self.tolerance else 0
+        record.update(physical_pass=physical_pass, s_parameter_checks=checks,
+                      s_parameter_delta=delta, s_parameter_matrix=matrix.copy(),
+                      s_parameter_tolerance=self.tolerance, minimum_passes=self.minimum_passes,
+                      consecutive_checks=self.consecutive_checks)
+        return physical_pass >= self.minimum_passes and checks >= self.consecutive_checks
+
+
 class AntennaSolver3D(RadiationBoxSolver):
     """Driven antenna in a physical vacuum box surrounded by a Cartesian PML."""
 
@@ -62,6 +92,11 @@ class AntennaSolver3D(RadiationBoxSolver):
         self._regions = []
         self._refinements = []
         self._ports = {}
+        self._s_parameter_check = _SParameterConvergence(.02, 3, 1)
+        self._s_parameter_configured = False
+        self._wavelength_elements = None
+        self._cad_point_size = None
+        self._mesh_frequency = None
         self._size = None
         self._mesh = self.mesh_data = self.result = None
 
@@ -151,40 +186,65 @@ class AntennaSolver3D(RadiationBoxSolver):
         self._ports[port] = replace(self._ports[port], amplitude=amplitude, phase_deg=phase_deg)
         self.result = None
 
-    def mesh(self, *, max_element_size=None, element_order=2, quadrature_order=DEFAULT_QUADRATURE_ORDER):
-        return self._mesh_at(self.frequency, max_element_size, element_order, quadrature_order)
+    def configure_s_parameter_convergence(self, *, tolerance=None, minimum_passes=3, consecutive_checks=1):
+        """Stop physical adaptation on the maximum change in the complex port matrix."""
+        minimum = positive_integer(minimum_passes, "minimum_passes", minimum=2)
+        checks = positive_integer(consecutive_checks, "consecutive_checks")
+        self._s_parameter_check = (None if tolerance is None else _SParameterConvergence(
+            positive_real(tolerance, "tolerance"), minimum, checks))
+        self._s_parameter_configured = True
 
-    def _mesh_at(self, frequency, max_element_size, element_order, quadrature_order):
+    def mesh(self, *, max_element_size=None, wavelength_elements=None, cad_point_size=None, element_order=2,
+             quadrature_order=DEFAULT_QUADRATURE_ORDER):
+        if wavelength_elements is not None:
+            if max_element_size is not None:
+                raise ConfigurationError("Choose wavelength_elements or max_element_size.")
+            wavelength_elements = positive_real(wavelength_elements, "wavelength_elements")
+        if cad_point_size is not None:
+            cad_point_size = positive_real(cad_point_size, "cad_point_size")
+        if self._adaptive_sizes is not None:
+            return self._mesh_at(self._mesh_frequency, max_element_size, element_order, quadrature_order,
+                                 self._wavelength_elements, self._cad_point_size)
+        return self._mesh_at(self.frequency, max_element_size, element_order, quadrature_order,
+                             wavelength_elements, cad_point_size)
+
+    def _mesh_at(self, frequency, max_element_size, element_order, quadrature_order,
+                 wavelength_elements, cad_point_size):
         element_order, quadrature_order = field_orders(element_order, quadrature_order, (1, 2))
         if not self._regions:
             raise GeometryError("Add antenna and feed geometry before meshing.")
         self._surface = self._nf2ff_surface()
-        size = (
-            self._wavelength_size(C_0 / frequency, element_order)
-            if max_element_size is None
-            else positive_real(max_element_size, "max_element_size")
-        )
+        policy, size, point, local = self._driven_mesh_settings(
+            C_0 / frequency, element_order, max_element_size, wavelength_elements, cad_point_size)
         material_aware = max_element_size is None or (self._adaptive_sizes is not None and self._mesh_auto_materials)
         physical, snapshot, faces = build_mesh(
             self._physical_ranges(self._pml_profiles),
             self._regions,
             size,
             interior_box=self._surface,
-            refinements=self._refinements,
+            refinements=(*self._refinements, *local),
             adaptive_sizes=self._adaptive_sizes,
             material_aware=material_aware,
+            cad_point_size=point,
             port_gaps={p.name: p.gap for p in self._ports.values() if isinstance(p, DiscretePort)},
         )
+        snapshot = replace(snapshot, info={**snapshot.info, "mesh_profile": policy.name,
+                           "cad_point_size": point, "automatic_local_sizes": [h for _, h in local]})
         self._attach_pml(physical, snapshot, faces, element_order, quadrature_order)
+        self._apply_driven_policy(policy)
         self._mesh_auto_materials = material_aware
+        self._wavelength_elements, self._mesh_frequency = wavelength_elements, frequency
+        self._cad_point_size = cad_point_size
         self._size, self.result = size, None
         return self.mesh_data
 
     def _prepare(self, max_frequency):
         if not self._ports:
             raise ConfigurationError("Add at least one waveguide or discrete port.")
-        if self._mesh is None:
-            self._mesh_at(max_frequency, None if self._mesh_auto_materials else self._size, **self._mesh_orders)
+        if self._mesh is None or (self._mesh_auto_materials and self._mesh_frequency < max_frequency):
+            self._mesh_at(max_frequency, None if self._mesh_auto_materials else self._size,
+                          wavelength_elements=self._wavelength_elements, cad_point_size=self._cad_point_size,
+                          **self._mesh_orders)
         quadrature = self._mesh_orders["quadrature_order"]
         basis = Basis(
             self._mesh, tetrahedral_element(self._mesh_orders["element_order"]),
@@ -243,6 +303,12 @@ class AntennaSolver3D(RadiationBoxSolver):
     def _adapt_frequency(self, frequency, selected, max_refinements, adaptive_tolerance,
                          max_elements, max_dofs, pml_tolerance, pml_observable, max_pml_refinements):
         prepared = None
+        check = self._s_parameter_check
+        if adaptive_tolerance is None:
+            adaptive_tolerance = check.tolerance if check is not None else .02
+        elif not self._s_parameter_configured:
+            # An explicit discretization tolerance requests the field-residual criterion.
+            check = None
 
         def solve_once():
             nonlocal prepared
@@ -255,10 +321,11 @@ class AntennaSolver3D(RadiationBoxSolver):
         result = run_adaptive(self, solve_once, lambda result: self._estimate, self._refine_driven,
                               max_refinements=max_refinements, adaptive_tolerance=adaptive_tolerance,
                               max_elements=max_elements, max_dofs=max_dofs,
-                              error_type=ConfigurationError, absorber=absorber)
+                              error_type=ConfigurationError, absorber=absorber,
+                              physical_check=check)
         return result, prepared
 
-    def solve(self, *, backend="auto", max_refinements=2, adaptive_tolerance=0.05,
+    def solve(self, *, backend="auto", max_refinements=8, adaptive_tolerance=None,
               max_elements=None, max_dofs=None, pml_tolerance=None, pml_observable=None,
               max_pml_refinements=3):
         """Adapt against all independent port excitations, then report their coherent superposition."""
@@ -268,7 +335,7 @@ class AntennaSolver3D(RadiationBoxSolver):
         )
         return self.result
 
-    def sweep(self, *, frequencies, backend="auto", max_refinements=2, adaptive_tolerance=0.05,
+    def sweep(self, *, frequencies, backend="auto", max_refinements=8, adaptive_tolerance=None,
               max_elements=None, max_dofs=None, pml_tolerance=None, pml_observable=None,
               max_pml_refinements=3):
         """Adapt at the highest frequency in hertz and reuse that mesh at every lower frequency."""
@@ -417,7 +484,8 @@ class AntennaSolver3D(RadiationBoxSolver):
                         port_traces.append((sections[port.name].face, prescribed))
                 indicators, residual, components, report = driven_residual(
                     basis, coeff, eps, 1 / mu, k, quadrature, walls=natural_walls,
-                    gap_sources=gap_sources, port_traces=port_traces, absorber=absorber, cache=cache)
+                    gap_sources=gap_sources, port_traces=port_traces, absorber=absorber, cache=cache,
+                    marking_weights=self._marking_weights)
                 for key, value in report.items():
                     domain_report[key] = max(value, domain_report.get(key, 0.))
                 if not np.isfinite(residual):

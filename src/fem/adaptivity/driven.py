@@ -8,7 +8,8 @@ from .policy import cached, cell_geometry
 
 
 def driven_residual(basis, coeff, primary_scale, derivative_scale, k, quadrature_order,
-                    incident=None, incident_derivative=None, *, walls=(), port_traces=(), gap_sources=(), absorber=None, cache=None):
+                    incident=None, incident_derivative=None, *, walls=(), port_traces=(), gap_sources=(),
+                    absorber=None, cache=None, marking_weights=None, component_indicators=None):
     mesh = basis.mesh
     count = len(primary_scale)
     vector = mesh.dim() == 3
@@ -53,7 +54,7 @@ def driven_residual(basis, coeff, primary_scale, derivative_scale, k, quadrature
         weight = (h[i] + h[j]) * np.sum(face.dx * jump, axis=1) / 4
         np.add.at(indicators, i, weight)
         np.add.at(indicators, j, weight)
-    sums = {"interface": indicators.sum()}
+    terms = {"interface": indicators}
     operators = derivative_operators(basis)
     if vector:
         pde = -k * primary.copy()
@@ -69,8 +70,7 @@ def driven_residual(basis, coeff, primary_scale, derivative_scale, k, quadrature
             pde += k * (derivative_scale - primary_scale)[:, None] * incident(basis.global_coordinates())
         pde_density = np.sum(abs(pde)**2, axis=0)
         local = h[:count]**2 * np.sum(basis.dx * abs(divergence)**2, axis=1)
-        indicators += local
-        sums["divergence"] = local.sum()
+        terms["divergence"] = local
     else:
         pde = k * primary.copy()
         for axis in range(2):
@@ -79,9 +79,8 @@ def driven_residual(basis, coeff, primary_scale, derivative_scale, k, quadrature
             pde += k * (primary_scale - derivative_scale)[:, None] * incident(basis.global_coordinates())
         pde_density = abs(pde)**2
     local = h[:count]**2 * np.sum(basis.dx * pde_density, axis=1)
-    sums["element_pde"] = local.sum()
-    indicators += local
-    sums["natural_boundary"] = 0.
+    terms["element_pde"] = local
+    terms["natural_boundary"] = np.zeros(count)
     for facets, admittance in walls:
         face = FacetBasis(mesh, basis.elem, facets=facets, intorder=quadrature_order, dofs=basis.dofs)
         value, trace = fluxes(face, face.tind, include_incident=True)
@@ -94,20 +93,25 @@ def driven_residual(basis, coeff, primary_scale, derivative_scale, k, quadrature
         else:
             density = abs(np.sum(normal * trace, axis=0) + 1j * admittance * value)**2
         local = h[face.tind] * np.sum(face.dx * density, axis=1)
-        np.add.at(indicators, face.tind, local)
-        sums["natural_boundary"] += local.sum()
+        np.add.at(terms["natural_boundary"], face.tind, local)
+    if port_traces:
+        terms["port_boundary"] = np.zeros(count)
     for face, prescribed_flux in port_traces:
         _, trace = fluxes(face, face.tind)
         mismatch = np.cross(face.normals, trace, axis=0) - prescribed_flux
         local = h[face.tind] * np.sum(face.dx * np.sum(abs(mismatch)**2, axis=0), axis=1)
-        np.add.at(indicators, face.tind, local)
-        sums["port_boundary"] = sums.get("port_boundary", 0.) + local.sum()
+        np.add.at(terms["port_boundary"], face.tind, local)
     scale = max(energy, np.finfo(float).tiny)
     # Some tetrahedral rules have negative weights. Clamp roundoff after integration.
-    indicators = np.maximum(indicators, 0.) / scale
+    indicators = np.maximum(sum(terms.values()), 0.) / scale
     residual = float(np.sqrt(indicators.sum()))
     components = {
-        name: float(np.sqrt(max(value, 0.) / scale)) for name, value in sums.items()}
+        name: float(np.sqrt(max(value.sum(), 0.) / scale)) for name, value in terms.items()}
+    if component_indicators is not None:
+        component_indicators.update({name: value / scale for name, value in terms.items()})
+    if marking_weights:
+        weighted = sum(marking_weights.get(name, 1.) * value for name, value in terms.items())
+        indicators = np.maximum(weighted, 0.) / scale
 
     if absorber is None:
         return indicators, residual, components

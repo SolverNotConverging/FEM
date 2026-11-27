@@ -4,26 +4,20 @@ import numpy as np
 import fem
 
 
-def flared_section(throat, mouth, bottom, top, half_height):
-    outline = fem.shapes.Polygon(
-        points=(
-            (-throat, bottom),
-            (throat, bottom),
-            (throat, 0),
-            (mouth, top),
-            (-mouth, top),
-            (-throat, 0),
-        )
-    )
-    solid = fem.shapes.Extrusion(shape=outline, z_range=(-half_height, half_height))
-    return solid.rotated(angle=90, axis=(1, 0, 0))
-
-
 solver = fem.AntennaSolver3D(
     frequency=10e9, x_range=(-0.054, 0.054), y_range=(-0.036, 0.036), z_range=(-0.047, 0.068),
 )
-outer = flared_section(0.0125, 0.027, -0.018, 0.032, 0.006)
-inner = flared_section(0.01143, 0.026, -0.016, 0.033, 0.00508)
+# Trace each outline from the throat to the mouth, then turn the horn to face +z.
+outer_outline = fem.shapes.Polygon(points=(
+    (-0.0125, -0.018), (0.0125, -0.018), (0.0125, 0),
+    (0.027, 0.032), (-0.027, 0.032), (-0.0125, 0),
+))
+inner_outline = fem.shapes.Polygon(points=(
+    (-0.01143, -0.016), (0.01143, -0.016), (0.01143, 0),
+    (0.026, 0.033), (-0.026, 0.033), (-0.01143, 0),
+))
+outer = fem.shapes.Extrusion(shape=outer_outline, z_range=(-0.006, 0.006)).rotated(angle=90, axis=(1, 0, 0))
+inner = fem.shapes.Extrusion(shape=inner_outline, z_range=(-0.00508, 0.00508)).rotated(angle=90, axis=(1, 0, 0))
 solver.add_geometry(
     shape=fem.shapes.Difference(shape=outer, tool=inner), material=fem.materials.PEC
 )
@@ -33,7 +27,7 @@ solver.add_waveguide_port(
 )
 solver.add_pml(thickness="auto")
 solver.add_nf2ff(distance="auto")
-sweep = solver.sweep(frequencies=np.linspace(9e9, 11e9, 5), max_refinements=2, backend="auto")
+sweep = solver.sweep(frequencies=np.linspace(9e9, 11e9, 5))
 for case in sweep:
     gain = case.far_field([[0, 0, 1]]).realized_gain[0]
     print(f"{case.frequency / 1e9:.2f} GHz   S11={case.s_parameters[0, 0]:.4f}"
